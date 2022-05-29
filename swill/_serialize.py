@@ -3,8 +3,7 @@ from typing import Any, Optional, Type
 import msgspec
 
 from ._types import ErrorMessage
-from ._protocol import EncapsulatedResponse
-from . import EncapsulatedRequest, ResponseType
+from ._protocol import EncapsulatedResponse, EncapsulatedRequest, ResponseType
 
 _encoder = msgspec.msgpack.Encoder()
 _decoder = msgspec.msgpack.Decoder(type=EncapsulatedRequest)

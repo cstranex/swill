@@ -4,7 +4,7 @@ from typing import Callable, NamedTuple, Type, TypeVar, Generic, Union, cast
 from msgspec import Struct
 
 from ._types import Metadata
-from . import EncapsulatedRequest, RequestType, ResponseType
+from ._protocol import EncapsulatedRequest, RequestType, ResponseType
 from ._serialize import deserialize_message, serialize_response
 from ._connection import current_connection
 from ._exceptions import Error, SwillException
@@ -180,7 +180,9 @@ class StreamingRequest(Request, Generic[RequestParameters]):
         return self._queue.__aiter__()
 
 
-class SwillRequestHandler(NamedTuple):
+class _SwillRequestHandler(NamedTuple):
+    """A reference to an RPC handler"""
+
     func: Callable
     request_type: Type[Union[Request, StreamingRequest]]
     request_message_type: Type[Struct]

@@ -3,7 +3,7 @@
 import traceback
 from ._connection import current_connection
 from ._types import ErrorCode
-from . import EncapsulatedRequest
+from ._protocol import EncapsulatedRequest
 from ._exceptions import Error
 from ._serialize import serialize_error_response
 
