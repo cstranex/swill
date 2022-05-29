@@ -41,6 +41,9 @@ class RequestType(enum.IntEnum):
 
 
 class EncapsulatedMessage(Struct, array_like=True, omit_defaults=True):
+    # Incrementing sequence id for messages. Messages with the same sequence id should be considered related.
+    # ie: In a streaming request/response each message sent will use the same sequence id.
+    # A sequence id of 0 is reserved.
     seq: int
     data: Raw
 
