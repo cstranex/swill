@@ -9,14 +9,16 @@ and Msgpack for serialization.
 
 ```python
 # Server
+import swill.app
 from typing import Tuple
 import swill
 
-app = swill.Swill()
+app = swill.app.Swill(__name__)
+
 
 @app.handle()
 def add(request: swill.Request[Tuple[int, int]]) -> int:
-    return request.data[0] + request.data[1]
+   return request.data[0] + request.data[1]
 ```
 
 
@@ -96,7 +98,9 @@ to modify the connection or request as needed. Currently supported are (in order
 
 ## TODO
  - [ ] Typescript Client
- - [ ] Auto-Generated Client Libraries for Typescript 
+ - [ ] Auto-Generated Client Libraries for Typescript
+ - [ ] WebSocket Implementation
+   - [ ] Ping/Pong 
  - [X] Streaming requests
  - [X] Streaming responses
  - [X] Leading and trailing metadata
@@ -108,5 +112,4 @@ to modify the connection or request as needed. Currently supported are (in order
  - [ ] PubSub Plugin
  - [ ] Logging Plugin
  - [ ] Modules (ie: Flask Blueprints)
- - [ ] Development Server
  - [ ] Static File Serving
