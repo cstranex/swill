@@ -99,8 +99,6 @@ to modify the connection or request as needed. Currently supported are (in order
 ## TODO
  - [ ] Typescript Client
  - [ ] Auto-Generated Client Libraries for Typescript
- - [ ] WebSocket Implementation
-   - [ ] Ping/Pong 
  - [X] Streaming requests
  - [X] Streaming responses
  - [X] Leading and trailing metadata
@@ -110,6 +108,5 @@ to modify the connection or request as needed. Currently supported are (in order
  - [ ] Session Management
    - [ ] Redis Backend
  - [ ] PubSub Plugin
- - [ ] Logging Plugin
  - [ ] Modules (ie: Flask Blueprints)
  - [ ] Static File Serving
