@@ -6,11 +6,11 @@ import os
 import sys
 import typing
 from functools import cached_property
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from .asgi import AsgiApplication
 from ._connection import Connection
-from ._request import Request, StreamingRequest, _SwillRequestHandler
+from ._request import Request, StreamingRequest, RequestType, _SwillRequestHandler
 from ._exceptions import Error, HandlerNotFound
 from ._protocol import ResponseType, EncapsulatedRequest
 from ._serialize import deserialize_encapsulated_request, serialize_message, serialize_response
@@ -153,6 +153,16 @@ class Swill:
         # exists
         if original_request := connection.streams.get(stream_reference):
             await original_request.process_message(encapsulated_message)
+            return
+
+        if encapsulated_message.type == RequestType.CLOSE or encapsulated_message.type == RequestType.END_OF_STREAM:
+            # We received and end or close message, yet we do not have an open reference for this
+            # Issue a warning and return
+            self.logger.warning(
+                'Received %s for %s but that reference is not open.',
+                encapsulated_message.type,
+                stream_reference
+            )
             return
 
         await self._call_lifecycle_handlers('before_request', encapsulated_message)
