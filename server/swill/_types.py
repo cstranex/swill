@@ -1,8 +1,8 @@
 import enum
-from typing import Awaitable, Callable, AsyncIterator, Dict, Any, Optional
+from typing import Awaitable, Callable, AsyncIterator, Dict, Any, Optional, Union
 from msgspec import Struct
 
-Handler = Callable[[str], Awaitable[str]]
+Handler = Callable[[Any], Union[AsyncIterator[Any], Awaitable[Any]]]
 StreamingResponse = AsyncIterator
 Metadata = Dict[str, Any]
 
