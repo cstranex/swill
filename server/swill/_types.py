@@ -7,7 +7,7 @@ StreamingResponse = AsyncIterator
 Metadata = Dict[str, Any]
 
 
-class ErrorMessage(Struct):
+class ErrorMessage(Struct, omit_defaults=True):
     code: int
     message: str
     data: Optional[Any] = None
