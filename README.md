@@ -9,7 +9,7 @@ and Msgpack for serialization.
 
 ```python
 # Server
-import swill.app
+from server import swill
 from typing import Tuple
 import swill
 
@@ -24,7 +24,7 @@ def add(request: swill.Request[Tuple[int, int]]) -> int:
 
 ```typescript
 // Generic Client
-import {Client} from '@swill/swill';
+import {Client} from '@swillorg/swill';
 
 const client = new Client();
 await client.connect('localhost');
@@ -96,6 +96,38 @@ to modify the connection or request as needed. Currently supported are (in order
 `before_request_data`, `before_request_message`, `before_leading_metadata`,
 `before_response_message`, `before_trailing_metadata`, `after_request`, `after_connection`
 
+### Introspection
+Query the application with the introspection API
+
+#### Example
+```python
+
+>>> response = await client.introspect()  # Equivalent to calling 'swill.introspect'
+>>> async for introspected_handler in response.data:
+    ...pprint(introspected_handler)
+IntrospectedRpc(
+   name="add",
+   request=RpcArguments(
+      streams=False
+      type=List[int, int]
+   ),
+   response=RpcArguments(
+      streams=False
+      type=List[int, int]
+   ),
+)
+IntrospectedRpc(
+   name="lines",
+   request_type=int,
+   request_streams=False,
+   response_type=str,
+   response_streams=True,
+)
+```
+
+### Self-Documentation
+Generate documentation from your handlers, types and docstrings automatically.
+
 ## TODO
  - [ ] Typescript Client
  - [ ] Auto-Generated Client Libraries for Typescript
@@ -110,3 +142,5 @@ to modify the connection or request as needed. Currently supported are (in order
  - [ ] PubSub Plugin
  - [ ] Modules (ie: Flask Blueprints)
  - [ ] Static File Serving
+ - [ ] Introspection
+ - [ ] Unit Tests

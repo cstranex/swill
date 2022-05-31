@@ -84,45 +84,45 @@ class Swill:
         for handler in self._lifecycle_handlers[name]:
             await handler(*args)
 
+    def _create_handler(self, handler_name: str, f: Handler):
+        function_types = typing.get_type_hints(f)
+        parameter_names = list(inspect.signature(f).parameters.keys())
+        response_message_type = function_types.get('return', None)
+        request_type = Request
+        request_streams = False
+        response_streams = False
+
+        if (origin := typing.get_origin(response_message_type)) and origin == AsyncIterator:
+            response_streams = True
+            _args = typing.get_args(response_message_type)
+            response_message_type = _args[0] if _args else None
+
+        if parameter_names:
+            _type = function_types.get(parameter_names[0], None)
+            if origin := typing.get_origin(_type):
+                request_type = origin
+                request_streams = origin == StreamingRequest
+            _args = typing.get_args(_type)
+        else:
+            _args = None
+
+        message_type = _args[0] if _args else None
+
+        self._handlers[handler_name] = _SwillRequestHandler(
+            func=f,
+            request_type=request_type,
+            request_streams=request_streams,
+            response_streams=response_streams,
+            request_message_type=message_type,
+            response_message_type=response_message_type,
+        )
+
     def handle(self, name: str = None) -> typing.Callable[[Handler], typing.Any]:
         """Handle an RPC request. If name is not given then the function name will be used instead"""
-
         def wrapper(f: Handler):
             handler_name = f.__name__ if not name else name
-            function_types = typing.get_type_hints(f)
-            parameter_names = list(inspect.signature(f).parameters.keys())
-            response_message_type = function_types.get('return', None)
-            request_type = Request
-            request_streams = False
-            response_streams = False
-
-            if (origin := typing.get_origin(response_message_type)) and origin == AsyncIterator:
-                response_streams = True
-                _args = typing.get_args(response_message_type)
-                response_message_type = _args[0] if _args else None
-
-            if parameter_names:
-                _type = function_types.get(parameter_names[0], None)
-                if origin := typing.get_origin(_type):
-                    request_type = origin
-                    request_streams = origin == StreamingRequest
-                _args = typing.get_args(_type)
-            else:
-                _args = None
-
-            message_type = _args[0] if _args else None
-
-            self._handlers[handler_name] = _SwillRequestHandler(
-                func=f,
-                request_type=request_type,
-                request_streams=request_streams,
-                response_streams=response_streams,
-                request_message_type=message_type,
-                response_message_type=response_message_type,
-            )
-
+            self._create_handler(handler_name, f)
             return f
-
         return wrapper
 
     async def _handle_exception(self, exception: BaseException, message: EncapsulatedRequest):
