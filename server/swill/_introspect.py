@@ -45,8 +45,7 @@ def introspect_type(message_type: t.Type) -> RpcTypeDefinition:
 
     if not message_type:
         return definition
-    if origin := typing.get_origin(message_type):
-        print("We got a generic", message_type, origin)
+    if typing.get_origin(message_type):
         definition.arguments = {}
         for n, argument in enumerate(typing.get_args(message_type)):
             definition.arguments[n] = introspect_type(argument)
