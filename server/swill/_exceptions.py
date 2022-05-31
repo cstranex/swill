@@ -2,6 +2,14 @@ class SwillException(Exception):
     pass
 
 
+class SwillSerializationError(SwillException):
+    pass
+
+
+class SwillDeserializationError(SwillException):
+    pass
+
+
 class HandlerNotFound(SwillException):
     pass
 
