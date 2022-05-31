@@ -148,28 +148,28 @@ class Swill:
             current_task.set_name(f'func-{encapsulated_message.rpc}')
 
         stream_reference = (encapsulated_message.rpc, encapsulated_message.seq)
-
-        # Send messages to the already open request for this stream reference if it
-        # exists
-        if original_request := connection.streams.get(stream_reference):
-            await original_request.process_message(encapsulated_message)
-            return
-
-        if encapsulated_message.type == RequestType.CLOSE or encapsulated_message.type == RequestType.END_OF_STREAM:
-            # We received and end or close message, yet we do not have an open reference for this
-            # Issue a warning and return
-            self.logger.warning(
-                'Received %s for %s but that reference is not open.',
-                encapsulated_message.type,
-                stream_reference
-            )
-            return
-
-        await self._call_lifecycle_handlers('before_request', encapsulated_message)
-        request, handler = self._create_request(encapsulated_message, connection)
-        await request.process_message(encapsulated_message)
+        request = None
 
         try:
+            # Send messages to the already open request for this stream reference if it
+            # exists
+            if original_request := connection.streams.get(stream_reference):
+                await original_request.process_message(encapsulated_message)
+                return
+
+            if encapsulated_message.type == RequestType.CLOSE or encapsulated_message.type == RequestType.END_OF_STREAM:
+                # We received and end or close message, yet we do not have an open reference for this
+                # Issue a warning and return
+                self.logger.warning(
+                    'Received %s for %s but that reference is not open.',
+                    encapsulated_message.type,
+                    stream_reference
+                )
+                return
+
+            request, handler = self._create_request(encapsulated_message, connection)
+            await self._call_lifecycle_handlers('before_request', encapsulated_message)
+            await request.process_message(encapsulated_message)
             await self._process_request(request, handler, connection)
         except asyncio.CancelledError:
             pass
@@ -180,7 +180,8 @@ class Swill:
         if stream_reference in connection.streams:
             del connection.streams[stream_reference]
 
-        await self._call_lifecycle_handlers('after_request', request)
+        if request:
+            await self._call_lifecycle_handlers('after_request', request)
 
     def _create_request(self, encapsulated_message: EncapsulatedRequest, connection: Connection):
 
