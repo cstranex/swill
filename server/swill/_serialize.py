@@ -21,7 +21,12 @@ def deserialize_message(encapsulated_message: EncapsulatedRequest, request_type:
 
 def serialize_message(message: Any, message_type: Type[msgspec.Struct]) -> bytes:
     """Serialize the message"""
-    if isinstance(message_type, msgspec.Struct):
+
+    if not message_type:
+        return _encoder.encode(message)
+    elif issubclass(message_type, msgspec.Struct):
+        if isinstance(message, message_type):
+            return _encoder.encode(message)
         return _encoder.encode(message_type(**message))
     else:
         return _encoder.encode(message)
