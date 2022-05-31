@@ -14,7 +14,7 @@ from ._request import Request, StreamingRequest, RequestType, _SwillRequestHandl
 from ._exceptions import Error, HandlerNotFound
 from ._protocol import ResponseType, EncapsulatedRequest
 from ._serialize import deserialize_encapsulated_request, serialize_message, serialize_response
-from . import _handlers as _exception_handlers
+from . import _handlers as _swill_handlers
 from ._types import Handler
 from .logging import create_logger
 
@@ -25,12 +25,15 @@ logger = logging.getLogger(__name__)
 
 
 class Swill:
+    config = {
+        'introspection.enabled': True
+    }
     asgi_app = None
     _handlers: typing.Dict[str, _SwillRequestHandler] = {}
     _exception_handlers: typing.Dict[typing.Type[BaseException], typing.Callable] = {
-        BaseException: _exception_handlers.handle_catch_all,
-        HandlerNotFound: _exception_handlers.handle_not_found,
-        Error: _exception_handlers.handle_error,
+        BaseException: _swill_handlers.handle_catch_all,
+        HandlerNotFound: _swill_handlers.handle_not_found,
+        Error: _swill_handlers.handle_error,
     }
     _error_code_handlers: typing.Dict[int, typing.Callable] = {}
     _lifecycle_handlers: typing.Dict[str, typing.List[typing.Callable]] = {
@@ -52,6 +55,9 @@ class Swill:
         self.debug = debug
         self.path = path
         current_app.set(self)
+        # Add swill handlers
+        if self.config.get('introspection.enabled'):
+            self._create_handler('swill.introspect', _swill_handlers.introspect(self))
 
     @property
     def name(self) -> str:
@@ -137,7 +143,7 @@ class Swill:
         if exception.code in self._exception_handlers:
             await self._error_code_handlers[exception.code](exception, message)
         else:
-            await _exception_handlers.handle_error(exception, message)
+            await _swill_handlers.handle_error(exception, message)
 
     async def _handle_request(self, data: bytes, connection: Connection):
         """Wait for the request processor and capture and handle any exceptions"""
