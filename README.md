@@ -129,6 +129,7 @@ IntrospectedRpc(
 Generate documentation from your handlers, types and docstrings automatically.
 
 ## TODO
+ - [ ] Python Client
  - [ ] Typescript Client
  - [ ] Auto-Generated Client Libraries for Typescript
  - [X] Streaming requests
@@ -142,5 +143,7 @@ Generate documentation from your handlers, types and docstrings automatically.
  - [ ] PubSub Plugin
  - [ ] Modules (ie: Flask Blueprints)
  - [ ] Static File Serving
- - [ ] Introspection
+ - [X] Introspection
+ - [ ] Auto-Generated API Doc/Playground 
  - [ ] Unit Tests
+ - [ ] Validators on Serialize/Deserialize
