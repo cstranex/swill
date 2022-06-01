@@ -1,13 +1,14 @@
+import abc
 import asyncio
+import contextvars
 from asyncio import Event, Queue
 from typing import Callable, NamedTuple, Type, TypeVar, Generic, Union, cast
 from msgspec import Struct
 
-from ._types import Metadata
-from ._protocol import EncapsulatedRequest, RequestType, ResponseType
-from ._serialize import deserialize_message, serialize_response
-from ._connection import current_connection
+from ._protocol import EncapsulatedRequest, RequestType
+from ._serialize import deserialize_message
 from ._exceptions import Error, SwillException
+from ._response import Response
 
 RequestParameters = TypeVar('RequestParameters')
 
@@ -48,7 +49,13 @@ class _StreamingQueue:
             self._end_of_stream.cancel()
 
 
-class Request(Generic[RequestParameters]):
+class BaseRequest(abc.ABC, Generic[RequestParameters]):
+    """The base request object that runs for the lifetime of the RPC request.
+
+    Contains various information about the request from the first message received message such
+    as the sequence id and metadata. It also exposes the Response that can be used to send
+    leading and trailing metdata
+    """
 
     _data = None
     _leading_metadata = None
@@ -56,64 +63,19 @@ class Request(Generic[RequestParameters]):
     _trailing_metadata = None
     _cancelled = False
 
-    def __init__(self, swill, encapsulated_message: EncapsulatedRequest, request_type: Type[Struct]):
+    def __init__(self, swill, first_message: EncapsulatedRequest, request_type: Type[Struct]):
         self._swill = swill
-        self._encapsulated_message = encapsulated_message
+        self._encapsulated_message = first_message
         self._request_type = request_type
+        self.response = Response(swill, self)
 
     async def process_message(self, message: EncapsulatedRequest):
-        if message.type == RequestType.MESSAGE:
-            self._data = cast(RequestParameters, deserialize_message(message, self._request_type))
-        elif message.type == RequestType.CLOSE:
-            self._cancelled = True
-        else:
-            raise SwillException("Request cannot process type: %s", message.type)
+        """Process the incoming message"""
+        raise NotImplementedError
 
     def abort(self, *, code: int = 500, message: str = ''):
         """Raise an Error exception"""
         raise Error(code=code, message=message)
-
-    async def send_leading_metadata(self):
-        await self._swill._call_lifecycle_handlers('before_leading_metadata', self, self._leading_metadata)
-        await current_connection.get().send(serialize_response(
-            seq=self.seq,
-            type=ResponseType.METADATA,
-            leading_metadata=self._leading_metadata
-        ))
-        self._leading_metadata_sent = True
-
-    async def set_leading_metadata(self, metadata: Metadata, send_immediately=True):
-        """Set leading metadata for this request. This can only be set once"""
-
-        if self.leading_metadata_sent:
-            raise ValueError("Metadata has already been sent for this request")
-
-        self._leading_metadata = metadata
-        if send_immediately:
-            await self.send_leading_metadata()
-
-    def set_trailing_metadata(self, metadata: Metadata):
-        self._trailing_metadata = metadata
-
-    def get_leading_metadata(self):
-        if self._leading_metadata_sent:
-            return
-        else:
-            self._leading_metadata_sent = True
-            return self._leading_metadata
-
-    @property
-    def trailing_metadata(self):
-        """Return trailing metadata if there is any or return None"""
-        return self._trailing_metadata
-
-    @property
-    def leading_metadata_sent(self):
-        return self._leading_metadata_sent
-
-    @property
-    def leading_metadata(self):
-        return self._leading_metadata
 
     @property
     def seq(self):
@@ -136,15 +98,26 @@ class Request(Generic[RequestParameters]):
         return self._cancelled
 
 
-class StreamingRequest(Request, Generic[RequestParameters]):
+class Request(BaseRequest, Generic[RequestParameters]):
+    async def process_message(self, message: EncapsulatedRequest):
+        """Set the data attribute by processing the incoming message."""
+        if message.type == RequestType.MESSAGE:
+            self._data = cast(RequestParameters, deserialize_message(message, self._request_type))
+        elif message.type == RequestType.CLOSE:
+            self._cancelled = True
+        else:
+            raise SwillException("BaseRequest cannot process type: %s", message.type)
+
+
+class StreamingRequest(BaseRequest, Generic[RequestParameters]):
 
     ended = False
     opening_request = True
 
-    def __init__(self, swill, encapsulated_message: EncapsulatedRequest, request_type: Type[Struct]):
-        self._end_of_stream = encapsulated_message.type == RequestType.END_OF_STREAM
+    def __init__(self, swill, first_message: EncapsulatedRequest, request_type: Type[Struct]):
+        self._end_of_stream = first_message.type == RequestType.END_OF_STREAM
         self._queue = _StreamingQueue()
-        super().__init__(swill, encapsulated_message, request_type)
+        super().__init__(swill, first_message, request_type)
         self.opening_request = False
 
     async def process_message(self, encapsulated_message: EncapsulatedRequest, request_type: Type[Struct] = None):
@@ -184,8 +157,11 @@ class _SwillRequestHandler(NamedTuple):
     """A reference to an RPC handler"""
 
     func: Callable
-    request_type: Type[Union[Request, StreamingRequest]]
+    request_type: Type[Union[BaseRequest, StreamingRequest]]
     request_message_type: Type[Struct]
     response_message_type: Type[Struct]
     request_streams: bool
     response_streams: bool
+
+
+current_request = contextvars.ContextVar('current_request')

@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator
 
 from .asgi import AsgiApplication
 from ._connection import Connection
-from ._request import Request, StreamingRequest, RequestType, _SwillRequestHandler
+from ._request import Request, StreamingRequest, RequestType, _SwillRequestHandler, current_request
 from ._exceptions import Error, HandlerNotFound
 from ._protocol import ResponseType, EncapsulatedRequest
 from ._serialize import deserialize_encapsulated_request, serialize_message, serialize_response
@@ -155,12 +155,15 @@ class Swill:
 
         stream_reference = (encapsulated_message.rpc, encapsulated_message.seq)
         request = None
+        request_token = None
 
         try:
             # Send messages to the already open request for this stream reference if it
             # exists
             if original_request := connection.streams.get(stream_reference):
+                request_token = current_request.set(original_request)
                 await original_request.process_message(encapsulated_message)
+                current_request.reset(request_token)
                 return
 
             if encapsulated_message.type == RequestType.CLOSE or encapsulated_message.type == RequestType.END_OF_STREAM:
@@ -174,6 +177,7 @@ class Swill:
                 return
 
             request, handler = self._create_request(encapsulated_message, connection)
+            request_token = current_request.set(request)
             await self._call_lifecycle_handlers('before_request', encapsulated_message)
             await request.process_message(encapsulated_message)
             await self._process_request(request, handler, connection)
@@ -188,6 +192,9 @@ class Swill:
 
         if request:
             await self._call_lifecycle_handlers('after_request', request)
+
+        if request_token:
+            current_request.reset(request_token)
 
     def _create_request(self, encapsulated_message: EncapsulatedRequest, connection: Connection):
 
@@ -222,14 +229,14 @@ class Swill:
             # Single responses just wait for the func to return data
             result = await handler_coro
 
-            await self._call_lifecycle_handlers('before_trailing_metadata', request, request.trailing_metadata)
+            await self._call_lifecycle_handlers('before_trailing_metadata', request, request.response.trailing_metadata)
             await self._call_lifecycle_handlers('before_response_message', request, result)
             await connection.send(
                 serialize_response(
                     data=serialize_message(result, handler.response_message_type),
                     seq=request.seq,
-                    trailing_metadata=request.trailing_metadata,
-                    leading_metadata=request.get_leading_metadata(),
+                    trailing_metadata=request.response.trailing_metadata,
+                    leading_metadata=await request.response.consume_leading_metadata(),
                 )
             )
         else:
@@ -245,18 +252,18 @@ class Swill:
                         serialize_response(
                             data=serialize_message(result, handler.response_message_type),
                             seq=request.seq,
-                            leading_metadata=request.get_leading_metadata()
+                            leading_metadata=await request.response.consume_leading_metadata()
                         )
                     )
 
             if not request.cancelled:
-                await self._call_lifecycle_handlers('before_trailing_metadata', self, request.trailing_metadata)
+                await self._call_lifecycle_handlers('before_trailing_metadata', self, request.response.trailing_metadata)
                 await connection.send(
                     serialize_response(
                         type=ResponseType.END_OF_STREAM,
                         seq=request.seq,
-                        leading_metadata=request.get_leading_metadata(),
-                        trailing_metadata=request.trailing_metadata
+                        leading_metadata=await request.response.consume_leading_metadata(),
+                        trailing_metadata=request.response.trailing_metadata
                     )
                 )
 
