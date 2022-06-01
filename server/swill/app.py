@@ -82,13 +82,11 @@ class Swill:
         if name not in self._lifecycle_handlers:
             raise ValueError(f"{name} is not a lifecycle")
 
-        if self._lifecycle_handlers[name]:
-            logger.debug('Running %s lifecycle handlers for: %s', name)
-        else:
-            return
+        if handlers := self._lifecycle_handlers[name]:
+            logger.debug('Running %s lifecycle handlers for: %s', len(handlers), name)
 
-        for handler in self._lifecycle_handlers[name]:
-            await handler(*args)
+            for handler in handlers:
+                await handler(*args)
 
     def _create_handler(self, handler_name: str, f: Handler):
         function_types = typing.get_type_hints(f)

@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import typing
 import typing as t
 
 from ._connection import CloseConnection, Connection, ConnectionData, current_connection
@@ -14,7 +15,7 @@ class AsgiApplication:
         self.request_handler = request_handler
 
     async def __call__(self, scope: dict, receive: t.Callable, send: t.Callable):
-        """Process an ASGI Request"""
+        """Process an ASGI BaseRequest"""
 
         # We only deal with websockets. In the future we might also support calling non-streaming requests
         # via HTTP.
@@ -30,6 +31,8 @@ class AsgiApplication:
                 'body': b'404 Not Found'
             })
             return
+
+        connection_token = None
 
         # Wait for us to accept the websocket
         while True:
@@ -62,8 +65,7 @@ class AsgiApplication:
                     'headers': connection_data.get_asgi_response_headers(),
                 })
                 break
-            elif request_event['type'] == 'websocket.disconnect':
-                return
+            return
 
         # Helper to abstract the actual sending of data out the websocket
         async def _send(data: bytes):
@@ -73,46 +75,11 @@ class AsgiApplication:
             })
 
         connection = Connection(_send, connection_data)
-        current_connection.set(connection)
-        await self.lifecycle_handler('after_accept', connection)
-
-        receive_task = asyncio.create_task(receive(), name='receive')
-        send_task = asyncio.create_task(connection.get_send_data(), name='send')
-        tasks = {receive_task, send_task}
+        connection_token = current_connection.set(connection)
 
         try:
-            while True:
-                done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-                [tasks.remove(task) for task in done]
-
-                if receive_task in done:
-                    event = receive_task.result()  # From await receive()
-                    if event['type'] == 'websocket.disconnect':
-                        logger.debug('websocket disconnected. Code: %s', event['code'])
-                        for task in tasks:
-                            # Cancel all remaining tasks for this connection
-                            if not task.done() and not task.cancelled():
-                                task.cancel()
-                        break
-                    elif event['type'] == 'websocket.receive':
-                        logger.debug("--> %s", event['bytes'])
-                        # Send this to our func for this connection
-                        handler_task = asyncio.create_task(
-                            self.request_handler(event['bytes'], connection),
-                            name='func'
-                        )
-                        tasks.add(handler_task)
-                    receive_task = asyncio.create_task(receive(), name='receive')
-                    tasks.add(receive_task)
-                if send_task in done:
-                    result = send_task.result()
-                    logger.debug("<-- %s", result)
-                    await send({
-                        'type': 'websocket.send',
-                        'bytes': result,
-                    })
-                    send_task = asyncio.create_task(connection.get_send_data(), name='send')
-                    tasks.add(send_task)
+            await self.lifecycle_handler('after_accept', connection)
+            await self._connection_loop(send, receive, connection)
         except CloseConnection as e:
             # Close the open connection, optionally sending a WebSocket Status Code and reason
             code = e.code if e.code >= 1000 else 1000
@@ -123,6 +90,58 @@ class AsgiApplication:
                 'code': code,
                 'reason': reason
             })
-            return
+        except Exception as e:
+            if connection_token:
+                current_connection.reset(connection_token)
+            raise e
 
-        await self.lifecycle_handler('after_connection', connection)
+        try:
+            await self.lifecycle_handler('after_connection', connection)
+        except Exception as e:
+            if connection_token:
+                current_connection.reset(connection_token)
+            raise e
+
+    async def _connection_loop(
+        self, send: typing.Callable, receive: typing.Callable, connection: Connection
+    ):
+
+        receive_task = asyncio.create_task(receive(), name='receive')
+        send_task = asyncio.create_task(connection.get_send_data(), name='send')
+        tasks = {receive_task, send_task}
+
+        while True:
+            done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                tasks.remove(task)
+
+            if receive_task in done:
+                event = receive_task.result()  # From await receive()
+                if event['type'] == 'websocket.disconnect':
+                    logger.debug('websocket disconnected. Code: %s', event['code'])
+                    for task in tasks:
+                        # Cancel all remaining tasks for this connection
+                        if not task.done() and not task.cancelled():
+                            task.cancel()
+                    break
+
+                if event['type'] == 'websocket.receive':
+                    logger.debug("--> %s", event['bytes'])
+                    # Send this to our func for this connection
+                    handler_task = asyncio.create_task(
+                        self.request_handler(event['bytes'], connection),
+                        name='func'
+                    )
+                    tasks.add(handler_task)
+                receive_task = asyncio.create_task(receive(), name='receive')
+                tasks.add(receive_task)
+
+            if send_task in done:
+                result = send_task.result()
+                logger.debug("<-- %s", result)
+                await send({
+                    'type': 'websocket.send',
+                    'bytes': result,
+                })
+                send_task = asyncio.create_task(connection.get_send_data(), name='send')
+                tasks.add(send_task)
