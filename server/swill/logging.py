@@ -35,7 +35,7 @@ class ErrorStreamHandler(logging.StreamHandler):
         return
 
 
-default_handler = logging.StreamHandler(ErrorStreamHandler(error_stream))  # type: ignore
+default_handler = ErrorStreamHandler(error_stream)
 default_handler.setFormatter(
     logging.Formatter("[%(asctime)s] %(levelname)s in %(module)s: %(message)s")
 )
