@@ -36,7 +36,7 @@ T = t.TypeVar('T')
 
 
 class ContextVarType(t.Generic[T]):
-    def set(self, name: str) -> contextvars.Token[T]:
+    def set(self, value: T) -> contextvars.Token[T]:
         ...
 
     def get(self) -> T:
