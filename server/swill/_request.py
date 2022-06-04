@@ -153,8 +153,8 @@ class _SwillRequestHandler(t.NamedTuple):
 
     func: t.Callable
     request_type: t.Type[t.Union[Request, StreamingRequest]]
-    request_message_type: t.Type[Struct]
-    response_message_type: t.Type[Struct]
+    request_message_type: t.Type
+    response_message_type: t.Type
     request_streams: bool
     response_streams: bool
     uses_response: bool
