@@ -1,11 +1,10 @@
 import abc
-import asyncio
 import contextvars
 import typing as t
 import warnings
-from asyncio import Event, Queue
 from msgspec import Struct
 
+from ._helpers import StreamingQueue
 from ._protocol import EncapsulatedRequest, RequestType
 from ._serialize import deserialize_message
 from ._exceptions import Error, SwillException, SwillRequestCancelled
@@ -13,70 +12,6 @@ from ._types import Metadata, ContextVarType
 
 RequestParameters = t.TypeVar('RequestParameters')
 RequestReference = t.NamedTuple('RequestReference', rpc=str, seq=int)
-
-
-class _StreamingQueue:
-    """A queue of incoming messages for a StreamingRequest to process"""
-
-    def __init__(self, name: str):
-        self.name = name
-        self._queue = Queue()
-        self._close_event = Event()
-        self._cancel_event = Event()
-        self._tasks = []
-
-    def add(self, message):
-        """Add message to the queue"""
-        self._queue.put_nowait(message)
-
-    def close(self):
-        """Close the streaming queue.
-        This will cause the generator to raise StopAsyncIteration."""
-        self._close_event.set()
-
-    def cancel(self):
-        """Cancel the streaming queue
-
-        This will cause the generator to raise SwillRequestCancelled"""
-        self._cancel_event.set()
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        if self._close_event.is_set():
-            raise StopAsyncIteration()
-
-        _get_item = asyncio.create_task(
-            self._queue.get(),
-            name=f'swill-queue-{self.name}'
-        )
-        _close_event = asyncio.create_task(
-            self._close_event.wait(),
-            name=f'swill-queue-{self.name}'
-        )
-        _cancel_event = asyncio.create_task(
-            self._cancel_event.wait(),
-            name=f'swill-queue-{self.name}'
-        )
-        self._tasks = [_get_item, _close_event, _cancel_event]
-
-        done, pending = await asyncio.wait(self._tasks, return_when=asyncio.FIRST_COMPLETED)
-
-        for task in pending:
-            task.cancel()
-            self._tasks = []
-
-        if _cancel_event in done:
-            raise SwillRequestCancelled()
-
-        if _get_item in done:
-            return _get_item.result()
-
-        if _close_event in done:
-            raise StopAsyncIteration()
-
-        raise StopAsyncIteration()
 
 
 class BaseRequest(abc.ABC, t.Generic[RequestParameters]):
