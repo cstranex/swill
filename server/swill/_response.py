@@ -2,7 +2,7 @@ from ._connection import current_connection
 from ._types import Metadata
 from ._protocol import ResponseType
 from ._serialize import serialize_response
-from ._exceptions import Error
+from ._exceptions import SwillException
 
 
 class Response:
@@ -21,7 +21,7 @@ class Response:
         the first response"""
 
         if self._leading_metadata_sent:
-            raise Error("Leading metadata has already been sent for this request")
+            raise SwillException("Leading metadata has already been sent for this request")
 
         await current_connection.get().send(serialize_response(
             seq=self._request.seq,
@@ -72,3 +72,9 @@ class Response:
     def trailing_metadata(self):
         """Return trailing metadata if there is any or None"""
         return self._trailing_metadata
+
+    def __repr__(self):
+        return f'<Response {self._request.reference}>'
+
+
+current_response = contextvars.ContextVar('current_response')

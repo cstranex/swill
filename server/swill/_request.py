@@ -1,52 +1,83 @@
 import abc
 import asyncio
 import contextvars
+import typing
+import warnings
 from asyncio import Event, Queue
-from typing import Callable, NamedTuple, Type, TypeVar, Generic, Union, cast
+from typing import Callable, NamedTuple, Type, TypeVar, Generic, Union, cast, Optional
 from msgspec import Struct
 
 from ._protocol import EncapsulatedRequest, RequestType
 from ._serialize import deserialize_message
-from ._exceptions import Error, SwillException
-from ._response import Response
+from ._exceptions import Error, SwillException, SwillRequestCancelled
+from ._types import Metadata
 
 RequestParameters = TypeVar('RequestParameters')
+RequestReference = typing.NamedTuple('RequestReference', rpc=str, seq=int)
 
 
 class _StreamingQueue:
+    """A queue of incoming messages for a StreamingRequest to process"""
 
-    def __init__(self):
+    def __init__(self, name: str):
+        self.name = name
         self._queue = Queue()
         self._close_event = Event()
-        self._get_item = None
-        self._end_of_stream = None
+        self._cancel_event = Event()
+        self._tasks = []
 
     def add(self, message):
+        """Add message to the queue"""
         self._queue.put_nowait(message)
 
     def close(self):
+        """Close the streaming queue.
+        This will cause the generator to raise StopAsyncIteration."""
         self._close_event.set()
+
+    def cancel(self):
+        """Cancel the streaming queue
+
+        This will cause the generator to raise SwillRequestCancelled"""
+        self._cancel_event.set()
 
     def __aiter__(self):
         return self
 
     async def __anext__(self):
-        self._get_item = asyncio.create_task(self._queue.get())
-        self._end_of_stream = asyncio.create_task(self._close_event.wait())
-        done, pending = await asyncio.wait([self._get_item, self._end_of_stream], return_when=asyncio.FIRST_COMPLETED)
-        if self._get_item in done:
-            return self._get_item.result()
-        if self._end_of_stream in done:
+        if self._close_event.is_set():
             raise StopAsyncIteration()
+
+        _get_item = asyncio.create_task(
+            self._queue.get(),
+            name=f'swill-queue-{self.name}'
+        )
+        _close_event = asyncio.create_task(
+            self._close_event.wait(),
+            name=f'swill-queue-{self.name}'
+        )
+        _cancel_event = asyncio.create_task(
+            self._cancel_event.wait(),
+            name=f'swill-queue-{self.name}'
+        )
+        self._tasks = [_get_item, _close_event, _cancel_event]
+
+        done, pending = await asyncio.wait(self._tasks, return_when=asyncio.FIRST_COMPLETED)
+
         for task in pending:
             task.cancel()
+            self._tasks = []
 
-    def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self._get_item and not self._get_item.cancelled():
-            self._get_item.cancel()
+        if _cancel_event in done:
+            raise SwillRequestCancelled()
 
-        if self._end_of_stream and not self._end_of_stream.cancelled():
-            self._end_of_stream.cancel()
+        if _get_item in done:
+            return _get_item.result()
+
+        if _close_event in done:
+            raise StopAsyncIteration()
+
+        raise StopAsyncIteration()
 
 
 class BaseRequest(abc.ABC, Generic[RequestParameters]):
@@ -58,16 +89,13 @@ class BaseRequest(abc.ABC, Generic[RequestParameters]):
     """
 
     _data = None
-    _leading_metadata = None
-    _leading_metadata_sent = False
-    _trailing_metadata = None
     _cancelled = False
 
-    def __init__(self, swill, first_message: EncapsulatedRequest, request_type: Type[Struct]):
+    def __init__(self, swill, reference: RequestReference, metadata: Optional[Metadata], message_type: Type[Struct]):
         self._swill = swill
-        self._encapsulated_message = first_message
-        self._request_type = request_type
-        self.response = Response(swill, self)
+        self._metadata = metadata
+        self._reference = reference
+        self._message_type = message_type
 
     async def process_message(self, message: EncapsulatedRequest):
         """Process the incoming message"""
@@ -77,36 +105,50 @@ class BaseRequest(abc.ABC, Generic[RequestParameters]):
         """Raise an Error exception"""
         raise Error(code=code, message=message)
 
+    def cancel(self):
+        """Cancel the running Request"""
+        self._cancelled = True
+
+    @property
+    def reference(self):
+        """Return the RequestReference for this request"""
+        return self._reference
+
     @property
     def seq(self):
-        return self._encapsulated_message.seq
+        """The sequence id for this request"""
+        return self._reference.seq
 
     @property
-    def message(self):
-        return self._encapsulated_message
-
-    @property
-    def data(self):
+    def data(self) -> RequestParameters:
         return self._data
 
     @property
     def metadata(self):
-        return self._encapsulated_message.metadata or {}
+        """Return the metadata sent by the client"""
+        return self._metadata or {}
 
     @property
     def cancelled(self):
+        """Indicates if the request has been cancelled"""
         return self._cancelled
+
+    def __repr__(self):
+        return f'<Request: {self.reference}>'
 
 
 class Request(BaseRequest, Generic[RequestParameters]):
     async def process_message(self, message: EncapsulatedRequest):
         """Set the data attribute by processing the incoming message."""
         if message.type == RequestType.MESSAGE:
-            self._data = cast(RequestParameters, deserialize_message(message, self._request_type))
-        elif message.type == RequestType.CLOSE:
-            self._cancelled = True
+            self._data = cast(RequestParameters, deserialize_message(message, self._message_type))
+        elif message.type == RequestType.CANCEL:
+            self.cancel()
         else:
-            raise SwillException("BaseRequest cannot process type: %s", message.type)
+            raise SwillException("Request cannot process type: %s", message.type)
+
+    def __repr__(self):
+        return f'<Single Request: {self.reference}>'
 
 
 class StreamingRequest(BaseRequest, Generic[RequestParameters]):
@@ -114,54 +156,73 @@ class StreamingRequest(BaseRequest, Generic[RequestParameters]):
     ended = False
     opening_request = True
 
-    def __init__(self, swill, first_message: EncapsulatedRequest, request_type: Type[Struct]):
-        self._end_of_stream = first_message.type == RequestType.END_OF_STREAM
-        self._queue = _StreamingQueue()
-        super().__init__(swill, first_message, request_type)
-        self.opening_request = False
+    def __init__(self, swill, reference: RequestReference, metadata: Optional[Metadata], message_type: Type[Struct]):
+        self._queue = _StreamingQueue(
+            name=str(reference)
+        )
+        super().__init__(swill, reference, metadata, message_type)
 
-    async def process_message(self, encapsulated_message: EncapsulatedRequest, request_type: Type[Struct] = None):
+    async def process_message(self, encapsulated_message: EncapsulatedRequest):
         """Process the message by deserializing it and add it to a queue for processing"""
-        await self._swill._call_lifecycle_handlers('before_request_data', self, encapsulated_message)
 
-        if self.ended:
-            return
-
-        if encapsulated_message.type == RequestType.CLOSE:
-            self._cancelled = True
+        if encapsulated_message.type == RequestType.CANCEL:
+            self.cancel()
             return
 
         if encapsulated_message.type == RequestType.END_OF_STREAM:
             self.end()
+            return
+
+        # If we are ended then don't process any further messages
+        if self.ended:
+            warnings.warn(
+                "Request ended but process_message received another message",
+                UserWarning
+            )
+            return
 
         if encapsulated_message.type == RequestType.METADATA:
             if not self.opening_request:
                 raise SwillException("Metadata can only be sent with the fist request")
-            self._encapsulated_message.metadata = encapsulated_message.metadata
+            self._metadata = encapsulated_message.metadata
+            return
 
-        self._data = message = deserialize_message(encapsulated_message, self._request_type)
+        self.opening_request = False
+        self._data = message = deserialize_message(encapsulated_message, self._message_type)
         await self._swill._call_lifecycle_handlers('before_request_message', self, message)
         self._queue.add(message)
 
-    def end(self, client_initiated=False):
+    def end(self):
+        """Closes the request."""
         self._queue.close()
         self.ended = True
-        if not client_initiated:
-            self._end_of_stream = True
 
-    def __aiter__(self):
-        return self._queue.__aiter__()
+    def cancel(self):
+        """Cancel the running Request. Usually this is called when the client sends
+        a CANCELLED message."""
+        super().cancel()
+        self._queue.cancel()
+
+    @property
+    def data(self) -> typing.AsyncGenerator[RequestParameters, None]:
+        return self._queue
+
+    def __repr__(self):
+        return f'<Streaming Request: {self.reference}>'
 
 
 class _SwillRequestHandler(NamedTuple):
     """A reference to an RPC handler"""
 
     func: Callable
-    request_type: Type[Union[BaseRequest, StreamingRequest]]
+    request_type: Type[Union[Request, StreamingRequest]]
     request_message_type: Type[Struct]
     response_message_type: Type[Struct]
     request_streams: bool
     response_streams: bool
+    uses_response: bool
 
 
 current_request = contextvars.ContextVar('current_request')
+
+AnyRequest = typing.Union[Request, StreamingRequest]

@@ -10,6 +10,10 @@ class SwillDeserializationError(SwillException):
     pass
 
 
+class SwillRequestCancelled(SwillException):
+    pass
+
+
 class HandlerNotFound(SwillException):
     pass
 

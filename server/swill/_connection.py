@@ -17,6 +17,9 @@ class ContextVarType(typing.Generic[T]):
     def get(self) -> T:
         ...
 
+    def reset(self, token: contextvars.Token[T]):
+        ...
+
 
 class InitialRequest(_SansIORequest):
     def __init__(
@@ -77,7 +80,7 @@ class Connection:
     """A connection object that is active during the lifetime of the WebSocket. It holds connection data with the
     initial HTTP request data and the initial HTTP response data."""
 
-    streams = {}
+    requests = {}
 
     def __init__(self, send, connection_data: ConnectionData):
         self._send_queue = Queue()
@@ -95,6 +98,9 @@ class Connection:
 
     def __getattr__(self, item):
         return getattr(self._connection_data, item)
+
+    def __repr__(self):
+        return f'<Connection {self.id}: {self._connection_data.request.remote_addr}>'
 
 
 current_connection = typing.cast(ContextVarType[Connection], contextvars.ContextVar('current_connection'))

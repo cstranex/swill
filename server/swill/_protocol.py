@@ -37,7 +37,7 @@ class RequestType(enum.IntEnum):
 
     # Terminate a streaming response from the client. Equivalent to
     # the server sending an END_OF_STREAM message.
-    CLOSE = 3
+    CANCEL = 3
 
 
 class EncapsulatedMessage(Struct, array_like=True, omit_defaults=True):
@@ -59,6 +59,9 @@ class EncapsulatedResponse(EncapsulatedMessage):
     # responses.
     trailing_metadata: Optional[Metadata] = None
 
+    def __repr__(self):
+        return f'<EncapsulatedResponse {self.type.name} #{self.seq}>'
+
 
 class EncapsulatedRequest(EncapsulatedMessage):
     rpc: str
@@ -68,3 +71,6 @@ class EncapsulatedRequest(EncapsulatedMessage):
     # Optional metadata is available in request.metadata. For streaming requests
     # it can only be sent once.
     metadata: Optional[Metadata] = None
+
+    def __repr__(self):
+        return f'<EncapsulatedRequest {self.type.name} #{self.seq}: {self.rpc}>'
