@@ -2,14 +2,15 @@ import logging
 import asyncio
 import typing as t
 
+from . import SwillException
 from ._connection import CloseConnection, Connection, ConnectionData, current_connection
 
 logger = logging.getLogger(__name__)
 
 
 class AsgiApplication:
-    def __init__(self, swill: "Swill", lifecycle_handler: t.Callable, request_handler: t.Callable):
-        self.swill = swill
+    def __init__(self, paths: t.List[str], lifecycle_handler: t.Callable, request_handler: t.Callable):
+        self.paths = paths
         self.lifecycle_handler = lifecycle_handler
         self.request_handler = request_handler
 
@@ -18,7 +19,7 @@ class AsgiApplication:
 
         # We only deal with websockets. In the future we might also support calling non-streaming requests
         # via HTTP.
-        if scope.get('type') != 'websocket' or scope.get('path') != self.swill.path:
+        if scope.get('type') != 'websocket' or scope.get('path') not in self.paths:
             logger.debug('Non-websocket request')
             await send({
                 'type': 'http.response.start',
@@ -31,39 +32,7 @@ class AsgiApplication:
             })
             return
 
-        connection_token = None
-
-        # Wait for us to accept the websocket
-        while True:
-            request_event = await receive()
-            if request_event['type'] == 'websocket.connect':
-                connection_data = ConnectionData(scope)
-                try:
-                    subprotocol = connection_data.choose_subprotocol()
-                    await self.lifecycle_handler('before_connection', connection_data)
-                except CloseConnection as e:
-                    # Close the connection
-                    if e.code < 1000:
-                        connection_data.http_response.status_code = e.code
-                    elif not connection_data.http_response.status_code:
-                        connection_data.http_response.status_code = 403  # Default return code
-
-                    await send({
-                        'type': 'http.response.start',
-                        'status': connection_data.http_response.status_code,
-                        'headers': connection_data.get_asgi_response_headers(),
-                    })
-                    await send({
-                        'type': 'http.response.body',
-                        'body': str(e).encode('utf-8')
-                    })
-                    return
-                await send({
-                    'type': 'websocket.accept',
-                    'subprotocol': subprotocol,
-                    'headers': connection_data.get_asgi_response_headers(),
-                })
-                break
+        if not (connection_data := await self._websocket_handshake(scope, receive, send)):
             return
 
         # Helper to abstract the actual sending of data out the websocket
@@ -89,17 +58,51 @@ class AsgiApplication:
                 'code': code,
                 'reason': reason
             })
-        except Exception as e:
-            if connection_token:
-                current_connection.reset(connection_token)
-            raise e
+        finally:
+            try:
+                await self.lifecycle_handler('after_connection', connection)
+            finally:
+                if connection_token:
+                    current_connection.reset(connection_token)
 
-        try:
-            await self.lifecycle_handler('after_connection', connection)
-        except Exception as e:
-            if connection_token:
-                current_connection.reset(connection_token)
-            raise e
+    async def _websocket_handshake(self, scope: dict, receive, send):
+        # Wait for us to accept the websocket
+        while True:
+            request_event = await receive()
+            if request_event['type'] == 'websocket.connect':
+                connection_data = ConnectionData(scope)
+                try:
+                    subprotocol = connection_data.choose_subprotocol()
+                    await self.lifecycle_handler('before_connection', connection_data)
+                except CloseConnection as e:
+                    # Close the connection
+                    if e.code < 1000:
+                        connection_data.http_response.status_code = e.code
+                    elif connection_data.http_response.status_code < 200:
+                        raise SwillException(
+                            "Cannot provide a 200 error code when ending a handshake"
+                        )
+                    elif not connection_data.http_response.status_code > 299:
+                        connection_data.http_response.status_code = 403  # Default return code
+
+                    await send({
+                        'type': 'http.response.start',
+                        'status': connection_data.http_response.status_code,
+                        'headers': connection_data.get_asgi_response_headers(),
+                    })
+                    await send({
+                        'type': 'http.response.body',
+                        'body': str(e).encode('utf-8')
+                    })
+                    return False
+                await send({
+                    'type': 'websocket.accept',
+                    'subprotocol': subprotocol,
+                    'headers': connection_data.get_asgi_response_headers(),
+                })
+                break
+            return False
+        return connection_data
 
     async def _connection_loop(
         self, send: t.Callable, receive: t.Callable, connection: Connection

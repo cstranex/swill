@@ -355,7 +355,9 @@ class Swill:
 
     async def __call__(self, scope: dict, receive: t.Callable, send: t.Callable):
         if not self.asgi_app:
-            self.asgi_app = AsgiApplication(self, self._call_lifecycle_handlers, self._handle_request)
+            self.asgi_app = AsgiApplication(
+                [self.path], self._call_lifecycle_handlers, self._handle_request
+            )
 
         return await self.asgi_app(scope, receive, send)
 
