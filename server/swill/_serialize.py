@@ -19,7 +19,9 @@ def deserialize_encapsulated_request(payload: bytes):
         raise SwillDeserializationError(e)
 
 
-def deserialize_message(encapsulated_message: EncapsulatedRequest, request_type: Optional[Any] = None):
+def deserialize_message(
+    encapsulated_message: EncapsulatedRequest, request_type: t.Optional[t.Any] = None
+):
     """Deserialize the message """
     try:
         return msgspec.msgpack.decode(encapsulated_message.data, type=request_type)
@@ -53,7 +55,7 @@ def serialize_response(**kwargs):
     return _encoder.encode(EncapsulatedResponse(**kwargs))
 
 
-def serialize_error_response(message: str = '', *, code: int, seq: int, data: Any = None):
+def serialize_error_response(message: str = '', *, code: int, seq: int, data: t.Any = None):
     """Serialize a standard error message"""
     data = ErrorMessage(code=code, message=message, data=data)
     return _encoder.encode(EncapsulatedResponse(
