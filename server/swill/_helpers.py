@@ -12,13 +12,7 @@ async def closing_response(generator_or_coro: t.Union[t.AsyncGenerator, t.Awaita
 
     try:
         yield generator_or_coro
-    except SwillRequestCancelled:
-        # If the handler did not handle it, just swallow it
-        print("We swalloed the request cancel")
+    except (SwillRequestCancelled, StopAsyncIteration):
         pass
-    except StopAsyncIteration:
-        print("Swallowed StopAsyncIteration")
     finally:
-        print("Going to close now")
         await generator_or_coro.aclose()
-        print("Closed? :)")
