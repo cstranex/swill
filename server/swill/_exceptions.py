@@ -10,7 +10,11 @@ class SwillDeserializationError(SwillException):
     pass
 
 
-class SwillRequestCancelled(SwillException):
+class SwillRequestError(SwillException):
+    pass
+
+
+class SwillRequestCancelled(SwillRequestError):
     pass
 
 

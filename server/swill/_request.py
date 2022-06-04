@@ -7,7 +7,7 @@ from msgspec import Struct
 from ._helpers import StreamingQueue
 from ._protocol import EncapsulatedRequest, RequestType
 from ._serialize import deserialize_message
-from ._exceptions import Error, SwillException, SwillRequestCancelled
+from ._exceptions import Error, SwillRequestError
 from ._types import Metadata, ContextVarType
 
 RequestParameters = t.TypeVar('RequestParameters')
@@ -75,11 +75,13 @@ class Request(BaseRequest, t.Generic[RequestParameters]):
     async def process_message(self, message: EncapsulatedRequest):
         """Set the data attribute by processing the incoming message."""
         if message.type == RequestType.MESSAGE:
-            self._data = t.cast(RequestParameters, deserialize_message(message, self._message_type))
+            message = t.cast(RequestParameters, deserialize_message(message, self._message_type))
+            await self._swill._call_lifecycle_handlers('before_request_message', self, message)
+            self._data = message
         elif message.type == RequestType.CANCEL:
             self.cancel()
         else:
-            raise SwillException("Request cannot process type: %s", message.type)
+            raise SwillRequestError("Request cannot process type: %s", message.type)
 
     def __repr__(self):
         return f'<Single Request: {self.reference}>'
@@ -90,14 +92,16 @@ class StreamingRequest(BaseRequest, t.Generic[RequestParameters]):
     ended = False
     opening_request = True
 
-    def __init__(self, swill, reference: RequestReference, metadata: t.Optional[Metadata], message_type: t.Type[Struct]):
-        self._queue = _StreamingQueue(
+    def __init__(self, swill, reference: RequestReference, metadata: t.Optional[Metadata], message_type: t.Type):
+        self._queue = StreamingQueue(
             name=str(reference)
         )
         super().__init__(swill, reference, metadata, message_type)
 
     async def process_message(self, encapsulated_message: EncapsulatedRequest):
         """Process the message by deserializing it and add it to a queue for processing"""
+        was_opening_request = self.opening_request
+        self.opening_request = False
 
         if encapsulated_message.type == RequestType.CANCEL:
             self.cancel()
@@ -116,12 +120,11 @@ class StreamingRequest(BaseRequest, t.Generic[RequestParameters]):
             return
 
         if encapsulated_message.type == RequestType.METADATA:
-            if not self.opening_request:
-                raise SwillException("Metadata can only be sent with the fist request")
+            if not was_opening_request:
+                raise SwillRequestError("Metadata can only be sent with the fist request")
             self._metadata = encapsulated_message.metadata
             return
 
-        self.opening_request = False
         self._data = message = deserialize_message(encapsulated_message, self._message_type)
         await self._swill._call_lifecycle_handlers('before_request_message', self, message)
         self._queue.add(message)
