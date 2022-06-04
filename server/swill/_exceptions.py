@@ -14,6 +14,10 @@ class SwillRequestCancelled(SwillException):
     pass
 
 
+class SwillResponseError(SwillException):
+    pass
+
+
 class HandlerNotFound(SwillException):
     pass
 

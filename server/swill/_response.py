@@ -5,7 +5,8 @@ from ._connection import current_connection
 from ._types import Metadata, ContextVarType
 from ._protocol import ResponseType
 from ._serialize import serialize_response
-from ._exceptions import SwillException
+from ._exceptions import SwillResponseError
+from ._request import BaseRequest
 
 
 class Response:
@@ -15,7 +16,7 @@ class Response:
     _leading_metadata_sent = False
     _trailing_metadata = None
 
-    def __init__(self, swill: "Swill", request: "RequestBase"):
+    def __init__(self, swill: "Swill", request: BaseRequest):
         self._swill = swill
         self._request = request
 
@@ -24,7 +25,7 @@ class Response:
         the first response"""
 
         if self._leading_metadata_sent:
-            raise SwillException("Leading metadata has already been sent for this request")
+            raise SwillResponseError("Leading metadata has already been sent for this request")
 
         await current_connection.get().send(serialize_response(
             seq=self._request.seq,
@@ -36,7 +37,7 @@ class Response:
         """Set leading metadata for this request. This can only be set once"""
 
         if self.leading_metadata_sent:
-            raise ValueError("Metadata has already been sent for this request")
+            raise SwillResponseError("Metadata has already been sent for this request")
 
         self._leading_metadata = metadata
         if send_immediately:
