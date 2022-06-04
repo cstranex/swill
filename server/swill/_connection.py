@@ -36,13 +36,13 @@ class ConnectionData:
         self.http_request = InitialRequest(
             method='get',
             scheme=asgi_scope.get('scheme', 'ws'),
-            server=asgi_scope['server'],
-            root_path=asgi_scope['root_path'],
-            path=asgi_scope['path'],
-            query_string=asgi_scope['query_string'],
-            headers=asgi_scope['headers'],
+            server=asgi_scope.get('server'),
+            root_path=asgi_scope.get('root_path', ''),
+            path=asgi_scope.get('path', ''),
+            query_string=asgi_scope.get('query_string'),
+            headers=asgi_scope.get('headers', []),
             remote_addr=asgi_scope['client'][0] if 'client' in asgi_scope else None,
-            subprotocols=asgi_scope['subprotocols']
+            subprotocols=asgi_scope.get('subprotocols')
         )
         self.http_response = _SansIOResponse()
 

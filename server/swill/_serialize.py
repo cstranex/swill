@@ -4,7 +4,7 @@ import msgspec
 
 from ._exceptions import SwillSerializationError, SwillDeserializationError
 from ._types import ErrorMessage
-from ._protocol import EncapsulatedResponse, EncapsulatedRequest, ResponseType
+from ._protocol import EncapsulatedResponse, EncapsulatedRequest, ResponseType, EncapsulatedMessage
 
 _encoder = msgspec.msgpack.Encoder()
 _decoder = msgspec.msgpack.Decoder(type=EncapsulatedRequest)
@@ -20,7 +20,7 @@ def deserialize_encapsulated_request(payload: bytes):
 
 
 def deserialize_message(
-    encapsulated_message: EncapsulatedRequest, request_type: t.Optional[t.Any] = None
+    encapsulated_message: EncapsulatedMessage, request_type: t.Optional[t.Any] = None
 ):
     """Deserialize the message """
     try:
