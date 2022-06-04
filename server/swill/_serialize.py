@@ -1,5 +1,4 @@
-import typing
-from typing import Any, Optional, Type
+import typing as t
 
 import msgspec
 
@@ -28,14 +27,14 @@ def deserialize_message(encapsulated_message: EncapsulatedRequest, request_type:
         raise SwillDeserializationError(e)
 
 
-def serialize_message(message: Any, message_type: Type = None) -> bytes:
+def serialize_message(message: t.Any, message_type: t.Type = None) -> bytes:
     """Serialize the message."""
 
     # TODO: We should do some validation against message_type
     # so that we can't for example have message_type: Dict[str, str]
     # and then serialize {"Test": 123}
 
-    if origin := typing.get_origin(message_type):
+    if origin := t.get_origin(message_type):
         if isinstance(message, origin):
             return _encoder.encode(message)
     elif not message_type or isinstance(message, message_type):

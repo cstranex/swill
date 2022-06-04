@@ -1,16 +1,17 @@
+import contextvars
 import enum
-from typing import Awaitable, Callable, AsyncIterator, Dict, Any, Optional, Union
+import typing as t
 from msgspec import Struct
 
-Handler = Callable[[Any], Union[AsyncIterator[Any], Awaitable[Any]]]
-StreamingResponse = AsyncIterator
-Metadata = Dict[str, Any]
+Handler = t.Callable[[t.Any], t.Union[t.AsyncIterator[t.Any], t.Awaitable[t.Any]]]
+StreamingResponse = t.AsyncIterator
+Metadata = t.Dict[str, t.Any]
 
 
 class ErrorMessage(Struct, omit_defaults=True):
     code: int
     message: str
-    data: Optional[Any] = None
+    data: t.Optional[t.Any] = None
 
 
 class MethodType(enum.IntEnum):
@@ -31,4 +32,15 @@ class ErrorCode(enum.IntEnum):
     INTERNAL_ERROR = 500
 
 
+T = t.TypeVar('T')
 
+
+class ContextVarType(t.Generic[T]):
+    def set(self, name: str) -> contextvars.Token[T]:
+        ...
+
+    def get(self) -> T:
+        ...
+
+    def reset(self, token: contextvars.Token[T]):
+        ...

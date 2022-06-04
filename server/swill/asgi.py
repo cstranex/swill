@@ -1,6 +1,6 @@
 import logging
 import asyncio
-import typing
+import typing as t
 import typing as t
 
 from ._connection import CloseConnection, Connection, ConnectionData, current_connection
@@ -103,7 +103,7 @@ class AsgiApplication:
             raise e
 
     async def _connection_loop(
-        self, send: typing.Callable, receive: typing.Callable, connection: Connection
+        self, send: t.Callable, receive: t.Callable, connection: Connection
     ):
 
         receive_task = asyncio.create_task(receive(), name='receive')

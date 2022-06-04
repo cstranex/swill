@@ -1,4 +1,4 @@
-import typing
+import typing as t
 import typing as t
 from msgspec import Struct
 from ._request import _SwillRequestHandler
@@ -23,11 +23,11 @@ class IntrospectedRpc(Struct):
 
 def _get_type_name(type: t.Type, no_arguments=True) -> str:
     # Is this a generic type?
-    if origin := typing.get_origin(type):
+    if origin := t.get_origin(type):
         origin_name = _get_type_name(origin)
         if no_arguments:
             return origin_name
-        arguments = [_get_type_name(arg, no_arguments) for arg in typing.get_args(type)]
+        arguments = [_get_type_name(arg, no_arguments) for arg in t.get_args(type)]
         return f'{origin_name}[{", ".join(arguments)}]'
     if hasattr(type, '__name__'):
         return type.__name__
@@ -45,9 +45,9 @@ def introspect_type(message_type: t.Type) -> RpcTypeDefinition:
 
     if not message_type:
         return definition
-    if typing.get_origin(message_type):
+    if t.get_origin(message_type):
         definition.arguments = {}
-        for n, argument in enumerate(typing.get_args(message_type)):
+        for n, argument in enumerate(t.get_args(message_type)):
             definition.arguments[n] = introspect_type(argument)
         return definition
     elif isinstance(message_type, Struct) or issubclass(message_type, Struct):

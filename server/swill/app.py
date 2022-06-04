@@ -4,7 +4,7 @@ import contextvars
 import inspect
 import os
 import sys
-import typing
+import typing as t
 from functools import cached_property
 from collections.abc import AsyncIterator
 
@@ -32,14 +32,14 @@ class Swill:
         'introspection.enabled': True
     }
     asgi_app = None
-    _handlers: typing.Dict[str, _SwillRequestHandler] = {}
-    _exception_handlers: typing.Dict[typing.Type[BaseException], typing.Callable] = {
+    _handlers: t.Dict[str, _SwillRequestHandler] = {}
+    _exception_handlers: t.Dict[t.Type[BaseException], t.Callable] = {
         BaseException: _swill_handlers.handle_catch_all,
         HandlerNotFound: _swill_handlers.handle_not_found,
         Error: _swill_handlers.handle_error,
     }
-    _error_code_handlers: typing.Dict[int, typing.Callable] = {}
-    _lifecycle_handlers: typing.Dict[str, typing.List[typing.Callable]] = {
+    _error_code_handlers: t.Dict[int, t.Callable] = {}
+    _lifecycle_handlers: t.Dict[str, t.List[t.Callable]] = {
         'before_connection': [],
         'after_accept': [],
         'before_request': [],
@@ -75,13 +75,13 @@ class Swill:
     def logger(self):
         return create_logger(self)
 
-    def add_lifecycle_handler(self, name: str, callback: typing.Callable):
+    def add_lifecycle_handler(self, name: str, callback: t.Callable):
         if name not in self._lifecycle_handlers:
             raise ValueError(f"{name} is not a lifecycle")
 
         self._lifecycle_handlers[name].append(callback)
 
-    async def _call_lifecycle_handlers(self, name: str, *args: typing.Any):
+    async def _call_lifecycle_handlers(self, name: str, *args: t.Any):
         if name not in self._lifecycle_handlers:
             raise ValueError(f"{name} is not a lifecycle")
 
@@ -92,7 +92,7 @@ class Swill:
                 await handler(*args)
 
     def _create_handler(self, handler_name: str, f: Handler):
-        function_types = typing.get_type_hints(f)
+        function_types = t.get_type_hints(f)
         parameter_names = list(inspect.signature(f).parameters.keys())
         response_message_type = function_types.get('return', None)
         request_type = Request
@@ -100,17 +100,17 @@ class Swill:
         response_streams = False
         uses_response = False
 
-        if (origin := typing.get_origin(response_message_type)) and origin == AsyncIterator:
+        if (origin := t.get_origin(response_message_type)) and origin == AsyncIterator:
             response_streams = True
-            _args = typing.get_args(response_message_type)
+            _args = t.get_args(response_message_type)
             response_message_type = _args[0] if _args else None
 
         if parameter_names:
             _type = function_types.get(parameter_names[0], None)
-            if origin := typing.get_origin(_type):
+            if origin := t.get_origin(_type):
                 request_type = origin
                 request_streams = origin == StreamingRequest
-            _args = typing.get_args(_type)
+            _args = t.get_args(_type)
 
             if len(parameter_names) > 1:
                 uses_response = function_types[parameter_names[1]] == Response
@@ -129,7 +129,7 @@ class Swill:
             uses_response=uses_response,
         )
 
-    def handle(self, name: str = None) -> typing.Callable[[Handler], typing.Any]:
+    def handle(self, name: str = None) -> t.Callable[[Handler], t.Any]:
         """Handle an RPC request. If name is not given then the function name will be used instead"""
         def wrapper(f: Handler):
             handler_name = f.__name__ if not name else name
@@ -224,7 +224,7 @@ class Swill:
                 handler_coro = handler.func(request)
 
             if not handler.response_streams:
-                if isinstance(handler_coro, typing.AsyncGenerator):
+                if isinstance(handler_coro, t.AsyncGenerator):
                     raise RuntimeError("Received a streaming response for a single response type")
                 await self._process_single_response(
                     coro=handler_coro,
@@ -279,11 +279,11 @@ class Swill:
 
     async def _process_single_response(
         self,
-        coro: typing.Awaitable,
+        coro: t.Awaitable,
         request: AnyRequest,
         response: Response,
         connection: Connection,
-        message_type: typing.Any
+        message_type: t.Any
     ):
         try:
             result = await coro
@@ -309,11 +309,11 @@ class Swill:
 
     async def _process_streaming_response(
         self,
-        generator: typing.AsyncGenerator,
+        generator: t.AsyncGenerator,
         request: AnyRequest,
         response: Response,
         connection: Connection,
-        message_type: typing.Any
+        message_type: t.Any
     ):
         """Process a streaming response"""
         # Wrap the generator so that it always closes
@@ -353,7 +353,7 @@ class Swill:
             )
         )
 
-    async def __call__(self, scope: dict, receive: typing.Callable, send: typing.Callable):
+    async def __call__(self, scope: dict, receive: t.Callable, send: t.Callable):
         if not self.asgi_app:
             self.asgi_app = AsgiApplication(self, self._call_lifecycle_handlers, self._handle_request)
 

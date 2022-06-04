@@ -1,24 +1,12 @@
-import typing
+import typing as t
 import contextvars
 import uuid
+from asyncio import Queue
 from werkzeug.sansio.request import Request as _SansIORequest
 from werkzeug.sansio.response import Response as _SansIOResponse
 from werkzeug.datastructures import Headers as _Headers
-from asyncio import Queue
 from ._exceptions import CloseConnection
-
-T = typing.TypeVar('T')
-
-
-class ContextVarType(typing.Generic[T]):
-    def set(self, t: T):
-        ...
-
-    def get(self) -> T:
-        ...
-
-    def reset(self, token: contextvars.Token[T]):
-        ...
+from ._types import ContextVarType
 
 
 class InitialRequest(_SansIORequest):
@@ -26,13 +14,13 @@ class InitialRequest(_SansIORequest):
         self,
         method: str,
         scheme: str,
-        server: typing.Optional[typing.Tuple[str, typing.Optional[int]]],
+        server: t.Optional[t.Tuple[str, t.Optional[int]]],
         root_path: str,
         path: str,
         query_string: bytes,
         headers: _Headers,
-        remote_addr: typing.Optional[str],
-        subprotocols: typing.List[str],
+        remote_addr: t.Optional[str],
+        subprotocols: t.List[str],
     ) -> None:
         super().__init__(method, scheme, server, root_path, path, query_string, headers, remote_addr)
         self.subprotocols = subprotocols
@@ -103,4 +91,7 @@ class Connection:
         return f'<Connection {self.id}: {self._connection_data.request.remote_addr}>'
 
 
-current_connection = typing.cast(ContextVarType[Connection], contextvars.ContextVar('current_connection'))
+current_connection = t.cast(
+    ContextVarType[Connection],
+    contextvars.ContextVar('current_connection')
+)

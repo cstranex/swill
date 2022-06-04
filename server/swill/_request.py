@@ -1,19 +1,18 @@
 import abc
 import asyncio
 import contextvars
-import typing
+import typing as t
 import warnings
 from asyncio import Event, Queue
-from typing import Callable, NamedTuple, Type, TypeVar, Generic, Union, cast, Optional
 from msgspec import Struct
 
 from ._protocol import EncapsulatedRequest, RequestType
 from ._serialize import deserialize_message
 from ._exceptions import Error, SwillException, SwillRequestCancelled
-from ._types import Metadata
+from ._types import Metadata, ContextVarType
 
-RequestParameters = TypeVar('RequestParameters')
-RequestReference = typing.NamedTuple('RequestReference', rpc=str, seq=int)
+RequestParameters = t.TypeVar('RequestParameters')
+RequestReference = t.NamedTuple('RequestReference', rpc=str, seq=int)
 
 
 class _StreamingQueue:
@@ -80,7 +79,7 @@ class _StreamingQueue:
         raise StopAsyncIteration()
 
 
-class BaseRequest(abc.ABC, Generic[RequestParameters]):
+class BaseRequest(abc.ABC, t.Generic[RequestParameters]):
     """The base request object that runs for the lifetime of the RPC request.
 
     Contains various information about the request from the first message received message such
@@ -91,7 +90,7 @@ class BaseRequest(abc.ABC, Generic[RequestParameters]):
     _data = None
     _cancelled = False
 
-    def __init__(self, swill, reference: RequestReference, metadata: Optional[Metadata], message_type: Type[Struct]):
+    def __init__(self, swill, reference: RequestReference, metadata: t.Optional[Metadata], message_type: t.Type[Struct]):
         self._swill = swill
         self._metadata = metadata
         self._reference = reference
@@ -137,11 +136,11 @@ class BaseRequest(abc.ABC, Generic[RequestParameters]):
         return f'<Request: {self.reference}>'
 
 
-class Request(BaseRequest, Generic[RequestParameters]):
+class Request(BaseRequest, t.Generic[RequestParameters]):
     async def process_message(self, message: EncapsulatedRequest):
         """Set the data attribute by processing the incoming message."""
         if message.type == RequestType.MESSAGE:
-            self._data = cast(RequestParameters, deserialize_message(message, self._message_type))
+            self._data = t.cast(RequestParameters, deserialize_message(message, self._message_type))
         elif message.type == RequestType.CANCEL:
             self.cancel()
         else:
@@ -151,12 +150,12 @@ class Request(BaseRequest, Generic[RequestParameters]):
         return f'<Single Request: {self.reference}>'
 
 
-class StreamingRequest(BaseRequest, Generic[RequestParameters]):
+class StreamingRequest(BaseRequest, t.Generic[RequestParameters]):
 
     ended = False
     opening_request = True
 
-    def __init__(self, swill, reference: RequestReference, metadata: Optional[Metadata], message_type: Type[Struct]):
+    def __init__(self, swill, reference: RequestReference, metadata: t.Optional[Metadata], message_type: t.Type[Struct]):
         self._queue = _StreamingQueue(
             name=str(reference)
         )
@@ -204,25 +203,25 @@ class StreamingRequest(BaseRequest, Generic[RequestParameters]):
         self._queue.cancel()
 
     @property
-    def data(self) -> typing.AsyncGenerator[RequestParameters, None]:
+    def data(self) -> t.AsyncGenerator[RequestParameters, None]:
         return self._queue
 
     def __repr__(self):
         return f'<Streaming Request: {self.reference}>'
 
 
-class _SwillRequestHandler(NamedTuple):
+class _SwillRequestHandler(t.NamedTuple):
     """A reference to an RPC handler"""
 
-    func: Callable
-    request_type: Type[Union[Request, StreamingRequest]]
-    request_message_type: Type[Struct]
-    response_message_type: Type[Struct]
+    func: t.Callable
+    request_type: t.Type[t.Union[Request, StreamingRequest]]
+    request_message_type: t.Type[Struct]
+    response_message_type: t.Type[Struct]
     request_streams: bool
     response_streams: bool
     uses_response: bool
 
 
-current_request = contextvars.ContextVar('current_request')
+AnyRequest = t.Union[Request, StreamingRequest]
 
-AnyRequest = typing.Union[Request, StreamingRequest]
+current_request = t.cast(ContextVarType[AnyRequest], contextvars.ContextVar('current_request'))

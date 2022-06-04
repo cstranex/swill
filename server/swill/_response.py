@@ -1,5 +1,8 @@
+import typing as t
+import contextvars
+
 from ._connection import current_connection
-from ._types import Metadata
+from ._types import Metadata, ContextVarType
 from ._protocol import ResponseType
 from ._serialize import serialize_response
 from ._exceptions import SwillException
@@ -77,4 +80,4 @@ class Response:
         return f'<Response {self._request.reference}>'
 
 
-current_response = contextvars.ContextVar('current_response')
+current_response = t.cast(ContextVarType[Response], contextvars.ContextVar('current_response'))
