@@ -33,7 +33,7 @@ class ConnectionData:
     subprotocol = 'swill/1'
 
     def __init__(self, asgi_scope: dict):
-        self.request = InitialRequest(
+        self.http_request = InitialRequest(
             method='get',
             scheme=asgi_scope.get('scheme', 'ws'),
             server=asgi_scope['server'],
@@ -44,24 +44,24 @@ class ConnectionData:
             remote_addr=asgi_scope['client'][0] if 'client' in asgi_scope else None,
             subprotocols=asgi_scope['subprotocols']
         )
-        self.response = _SansIOResponse()
+        self.http_response = _SansIOResponse()
 
     def choose_subprotocol(self):
         """Choose the best matching subprotocol and return it. If one cannot be found raise a CloseConnection error"""
-        if self.subprotocol not in self.request.subprotocols:
+        if self.subprotocol not in self.http_request.subprotocols:
             raise CloseConnection(code=406, reason='No suitable subprotocol')
         return self.subprotocol
 
     @property
     def request_headers(self):
-        return self.request.headers
+        return self.http_request.headers
 
     @property
     def response_headers(self):
-        return self.response.headers
+        return self.http_response.headers
 
     def get_asgi_response_headers(self):
-        return [(key.encode('utf-8'), value.encode('utf-8')) for key, value in self.response.headers.to_wsgi_list()]
+        return [(key.encode('utf-8'), value.encode('utf-8')) for key, value in self.http_response.headers.to_wsgi_list()]
 
 
 class Connection:
@@ -88,7 +88,7 @@ class Connection:
         return getattr(self._connection_data, item)
 
     def __repr__(self):
-        return f'<Connection {self.id}: {self._connection_data.request.remote_addr}>'
+        return f'<Connection {self.id}: {self._connection_data.http_request.remote_addr}>'
 
 
 current_connection = t.cast(

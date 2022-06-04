@@ -1,7 +1,6 @@
 import logging
 import asyncio
 import typing as t
-import typing as t
 
 from ._connection import CloseConnection, Connection, ConnectionData, current_connection
 
@@ -45,13 +44,13 @@ class AsgiApplication:
                 except CloseConnection as e:
                     # Close the connection
                     if e.code < 1000:
-                        connection_data.response.status_code = e.code
-                    elif not connection_data.response.status_code:
-                        connection_data.response.status_code = 403  # Default return code
+                        connection_data.http_response.status_code = e.code
+                    elif not connection_data.http_response.status_code:
+                        connection_data.http_response.status_code = 403  # Default return code
 
                     await send({
                         'type': 'http.response.start',
-                        'status': connection_data.response.status_code,
+                        'status': connection_data.http_response.status_code,
                         'headers': connection_data.get_asgi_response_headers(),
                     })
                     await send({
