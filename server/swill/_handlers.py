@@ -19,8 +19,8 @@ from ._serialize import serialize_error_response
 def create_handler(f: Handler) -> _SwillRequestHandler:
     """Create a SwillRequestHandler for the given handler"""
 
-    if not inspect.iscoroutinefunction(f):
-        raise ValueError('Request handler must be awaitable')
+    if not inspect.iscoroutinefunction(f) and not inspect.isasyncgenfunction(f):
+        raise ValueError(f'Request handler {f} must be async')
 
     function_types = t.get_type_hints(f)
     parameter_names = list(inspect.signature(f).parameters.keys())

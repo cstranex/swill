@@ -60,7 +60,7 @@ class Swill:
         current_app.set(self)
         # Add swill handlers
         if self.config.get('introspection.enabled'):
-            self._create_handler('swill.introspect', _swill_handlers.introspect(self))
+            self.add_handler(_swill_handlers.introspect(self), 'swill.introspect')
 
     @property
     def name(self) -> str:

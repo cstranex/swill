@@ -9,13 +9,21 @@ from swill._request import _SwillRequestHandler
 from swill._response import Response
 
 
-def test_handlder_is_async():
+def test_handler_is_async():
 
     def single_request_handler(request: Request):
         return 'test'
 
     with pytest.raises(ValueError):
         handler = create_handler(single_request_handler)
+
+
+def test_handler_async_generator():
+
+    async def streaming_response_handler(request: Request) -> StreamingResponse[int]:
+        yield 10
+
+    handler = create_handler(streaming_response_handler)
 
 
 def test_create_single_handler():
