@@ -48,8 +48,8 @@ class StreamingQueue(t.AsyncIterable):
         return self
 
     async def __anext__(self):
-        if self._close_event.is_set():
-            raise StopAsyncIteration()
+        if self._cancel_event.is_set():
+            raise SwillRequestCancelled()
 
         _get_item = asyncio.create_task(
             self._queue.get(),

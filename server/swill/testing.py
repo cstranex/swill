@@ -20,6 +20,9 @@ class SwillTestConnection:
         """Queue data out of the websocket"""
         await self._send_queue.put(data)
 
+    def has_send_data(self):
+        return self._send_queue.qsize()
+
     async def get_send_data(self):
         """Wait for data to send out the websocket"""
         return await self._send_queue.get()
@@ -30,6 +33,8 @@ class SwillTestConnection:
 
 class SwillTestRequest:
 
+    _request_ended = False
+
     class CloseContext(Exception):
         pass
 
@@ -39,10 +44,17 @@ class SwillTestRequest:
         self.connection = SwillTestConnection(connection)
         current_connection.set(self.connection)
 
-    def __enter__(self):
+    async def __aenter__(self):
+        # Handle the initial request. For streaming requests this will continue to run
+        # indefinitely, so we can't await here. Instead, wrap it in a task.
         self._request_task = asyncio.create_task(
             self.app._handle_request(serialize_message(self.request), self.connection)
         )
+        self._request_task.add_done_callback(self._close_request)
+        # Give the handler a chance to run by waiting
+        # Not sure if there is a better way to do this
+        await asyncio.sleep(0.01)
+        return self
 
     async def receive(self):
         data = await self.connection.get_send_data()
@@ -55,6 +67,9 @@ class SwillTestRequest:
             message = deserialize_message(response_message, response_type)
         elif response_message.type == ResponseType.ERROR:
             message = deserialize_message(response_message, ErrorMessage)
+            self._request_ended = True
+        elif response_message.type == ResponseType.END_OF_STREAM:
+            self._request_ended = True
 
         # We need to decode the data
         return {
@@ -83,25 +98,37 @@ class SwillTestRequest:
 
     async def end_of_stream(self):
         await self.send(type=RequestType.END_OF_STREAM)
+        self._request_ended = True
 
     async def cancel(self):
         await self.send(type=RequestType.CANCEL)
+        self._request_ended = True
 
-    async def close(self):
+    def _close_request(self):
         raise self.CloseContext()
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self._request_task.cancel()
-        if exc_type == self.CloseContext:
-            return
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if not self._request_ended:
+            await self.cancel()
 
+        close_fut = asyncio.ensure_future(self._request_task)
+        try:
+            await asyncio.wait_for(close_fut, timeout=30)
+        except asyncio.TimeoutError:
+            if not self._request_task.done() and not self._request_task.cancelled():
+                self._request_task.cancel()
+
+        if self._request_task.exception():
+            raise self._request_task.exception()
+
+        return not exc_type or exc_type == self.CloseContext
 
 class SwillTestClient:
     """Swill Test Client that can be used to test your Swill Application.
 
     Usage:
     async with SwillTestClient(app) as client:
-        with client.request(message_args) as request:
+        async with client.request(message_args) as request:
             await request.receive()
             await request.send(message_args_again)
             await request.close()

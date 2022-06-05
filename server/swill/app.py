@@ -6,12 +6,11 @@ import os
 import sys
 import typing as t
 from functools import cached_property
-from collections.abc import AsyncIterator
 
 from ._response import Response, current_response
 from .asgi import AsgiApplication
 from ._connection import Connection
-from ._request import Request, StreamingRequest, RequestType, _SwillRequestHandler, current_request, \
+from ._request import Request, RequestType, _SwillRequestHandler, current_request, \
     RequestReference, AnyRequest
 from ._exceptions import Error, HandlerNotFound, SwillRequestCancelled
 from ._protocol import ResponseType, EncapsulatedRequest
@@ -44,8 +43,8 @@ class Swill:
         'after_accept': [],
         'before_request': [],
         'before_request_metadata': [],
-        'before_request_data': [],
         'before_request_message': [],
+        'before_request_data': [],
         'before_leading_metadata': [],
         'before_response_message': [],
         'before_trailing_metadata': [],
@@ -123,12 +122,7 @@ class Swill:
         request_token = current_request.set(request)
         response_token = current_response.set(response)
         try:
-            await self._call_lifecycle_handlers(
-                'before_request_data',
-                request,
-                response,
-                message
-            )
+            await self._call_lifecycle_handlers('before_request_data', request, message)
             await request.process_message(message)
         except Exception as e:
             raise e
@@ -153,7 +147,6 @@ class Swill:
         # exists.
         if original_request := connection.requests.get(request_reference):
             request, response = original_request
-
             try:
                 await self._feed_request(request, response, encapsulated_message)
             except Exception as exception:
@@ -182,7 +175,9 @@ class Swill:
             connection.requests[request_reference] = (request, response)
 
             request_token = current_request.set(request)
-            await self._call_lifecycle_handlers('before_request', request, response)
+            await self._call_lifecycle_handlers(
+                'before_request', request, response, encapsulated_message
+            )
             await request.process_message(encapsulated_message)
             if handler.uses_response:
                 handler_coro = handler.func(request, response)

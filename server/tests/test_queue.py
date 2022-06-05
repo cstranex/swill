@@ -43,6 +43,8 @@ async def test_streaming_queue_close():
     queue.close()
 
     with pytest.raises(StopAsyncIteration):
+        item = await queue.__anext__()
+        assert item == 'second'
         await queue.__anext__()
     for task in queue._tasks:
         task.cancel()
