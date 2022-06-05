@@ -8,5 +8,7 @@ def with_timeout(t):
         async def run(*args, **kwargs):
             task = asyncio.create_task(corofunc(*args, **kwargs))
             return await asyncio.wait_for(task, timeout=t)
+
         return run
+
     return wrapper

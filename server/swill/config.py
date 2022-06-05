@@ -42,9 +42,9 @@ class Config(dict):
         self.root_path = root_path
         super().__init__(defaults or {})
 
-    def load_from_env(self, prefix='SWILL', loads: t.Callable[[str], t.Any] = json.loads):
+    def load_from_env(self, prefix="SWILL", loads: t.Callable[[str], t.Any] = json.loads):
         """Load configuration from the environment prefixed by prefix"""
-        full_prefix = f'{prefix}_'
+        full_prefix = f"{prefix}_"
         prefix_length = len(full_prefix)
         for key in sorted(filter(lambda v: v.startswith(full_prefix), os.environ)):
             value = loads(os.environ[key])
@@ -68,7 +68,7 @@ class Config(dict):
 
             current[tail] = value
 
-    def load_from_env_file(self, env_name='SWILL_CONFIG_FILE'):
+    def load_from_env_file(self, env_name="SWILL_CONFIG_FILE"):
         """Load configuration from the file specified by env_name"""
         self.load_from_file(os.getenv(env_name))
 
@@ -84,7 +84,7 @@ class Config(dict):
     def load_from_object(self, obj: object):
         """Load the configuration from the given object"""
         for key in dir(obj):
-            if key.startswith('__'):
+            if key.startswith("__"):
                 continue
             value = getattr(obj, key)
             if isinstance(value, Partial) or obj.__annotations__.get(key) == Partial:
@@ -102,10 +102,10 @@ class Config(dict):
     def __getitem__(self, key: str):
         """Get a configuration key. You can use dot notation to get a specific key
         eg: swill.introspection is equivalent to: return self['swill']['introspection']"""
-        if '.' not in key:
+        if "." not in key:
             return super().__getitem__(key)
 
-        namespace, others = key.split('.', 1)
+        namespace, others = key.split(".", 1)
         if namespace not in self:
             self[namespace] = {}
 
@@ -113,10 +113,10 @@ class Config(dict):
 
     def __setitem__(self, key: str, value: t.Any):
         """Set the configuration key"""
-        if '.' not in key:
+        if "." not in key:
             return super().__setitem__(key, value)
 
-        namespace, others = key.split('.', 1)
+        namespace, others = key.split(".", 1)
         if namespace not in self:
             self[namespace] = {}
 

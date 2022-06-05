@@ -20,11 +20,11 @@ def create_handler(f: Handler) -> _SwillRequestHandler:
     """Create a SwillRequestHandler for the given handler"""
 
     if not inspect.iscoroutinefunction(f) and not inspect.isasyncgenfunction(f):
-        raise ValueError(f'Request handler {f} must be async')
+        raise ValueError(f"Request handler {f} must be async")
 
     function_types = t.get_type_hints(f)
     parameter_names = list(inspect.signature(f).parameters.keys())
-    response_message_type = function_types.get('return', None)
+    response_message_type = function_types.get("return", None)
     request_type = Request
     request_streams = False
     response_streams = False
@@ -49,23 +49,24 @@ def create_handler(f: Handler) -> _SwillRequestHandler:
 
     message_type = _args[0] if _args else None
     return _SwillRequestHandler(
-            func=f,
-            request_type=request_type,
-            request_streams=request_streams,
-            response_streams=response_streams,
-            request_message_type=message_type,
-            response_message_type=response_message_type,
-            uses_response=uses_response,
-        )
+        func=f,
+        request_type=request_type,
+        request_streams=request_streams,
+        response_streams=response_streams,
+        request_message_type=message_type,
+        response_message_type=response_message_type,
+        uses_response=uses_response,
+    )
 
 
 # Other handlers
 def introspect(swill: "Swill"):
-
     async def introspect_handlers(request: Request) -> StreamingResponse[IntrospectedRpc]:
         ignore_swill = True
-        for name, request_handler in t.cast(t.List[t.Tuple[str, _SwillRequestHandler]], swill._handlers.items()):
-            if name.startswith('swill.') and ignore_swill:
+        for name, request_handler in t.cast(
+            t.List[t.Tuple[str, _SwillRequestHandler]], swill._handlers.items()
+        ):
+            if name.startswith("swill.") and ignore_swill:
                 continue
             yield introspect_handler(name, request_handler)
 
@@ -76,40 +77,28 @@ def introspect(swill: "Swill"):
 async def handle_not_found(exception: BaseException, message: EncapsulatedRequest):
     await current_connection.get().send(
         serialize_error_response(
-            code=ErrorCode.NOT_FOUND,
-            seq=message.seq,
-            message=str(exception)
+            code=ErrorCode.NOT_FOUND, seq=message.seq, message=str(exception)
         )
     )
 
 
 async def handle_catch_all(exception: BaseException, message: EncapsulatedRequest):
-    traceback.print_exception(
-        exception.__class__,
-        exception,
-        exception.__traceback__
-    )
+    traceback.print_exception(exception.__class__, exception, exception.__traceback__)
 
     await current_connection.get().send(
         serialize_error_response(
             code=ErrorCode.INTERNAL_ERROR,
             seq=message.seq,
-            message='An internal server error occurred'
+            message="An internal server error occurred",
         )
     )
 
 
 async def handle_error(exception: Error, message: EncapsulatedRequest):
-    traceback.print_exception(
-        exception.__class__,
-        exception,
-        exception.__traceback__
-    )
+    traceback.print_exception(exception.__class__, exception, exception.__traceback__)
 
     await current_connection.get().send(
         serialize_error_response(
-            code=exception.code,
-            seq=message.seq,
-            message=str(exception)
+            code=exception.code, seq=message.seq, message=str(exception)
         )
     )

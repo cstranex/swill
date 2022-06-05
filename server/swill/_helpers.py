@@ -25,7 +25,7 @@ async def closing_response(generator_or_coro: t.Union[t.AsyncGenerator, t.Awaita
 class StreamingQueue(t.AsyncIterable):
     """A queue of incoming messages for a StreamingRequest to process"""
 
-    def __init__(self, name: str = 'StreamingQueue'):
+    def __init__(self, name: str = "StreamingQueue"):
         self.name = name
         self._queue = asyncio.Queue()
         self._close_event = asyncio.Event()
@@ -55,20 +55,19 @@ class StreamingQueue(t.AsyncIterable):
             raise SwillRequestCancelled()
 
         _get_item = asyncio.create_task(
-            self._queue.get(),
-            name=f'swill-queue-{self.name}'
+            self._queue.get(), name=f"swill-queue-{self.name}"
         )
         _close_event = asyncio.create_task(
-            self._close_event.wait(),
-            name=f'swill-queue-{self.name}'
+            self._close_event.wait(), name=f"swill-queue-{self.name}"
         )
         _cancel_event = asyncio.create_task(
-            self._cancel_event.wait(),
-            name=f'swill-queue-{self.name}'
+            self._cancel_event.wait(), name=f"swill-queue-{self.name}"
         )
         self._tasks = [_get_item, _close_event, _cancel_event]
 
-        done, pending = await asyncio.wait(self._tasks, return_when=asyncio.FIRST_COMPLETED)
+        done, pending = await asyncio.wait(
+            self._tasks, return_when=asyncio.FIRST_COMPLETED
+        )
 
         for task in pending:
             task.cancel()

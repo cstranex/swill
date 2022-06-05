@@ -10,11 +10,21 @@ from functools import cached_property
 from ._response import Response, current_response
 from .asgi import AsgiApplication
 from ._connection import Connection
-from ._request import Request, RequestType, _SwillRequestHandler, current_request, \
-    RequestReference, AnyRequest
+from ._request import (
+    Request,
+    RequestType,
+    _SwillRequestHandler,
+    current_request,
+    RequestReference,
+    AnyRequest,
+)
 from ._exceptions import Error, HandlerNotFound, SwillRequestCancelled
 from ._protocol import ResponseType, EncapsulatedRequest
-from ._serialize import deserialize_encapsulated_request, serialize_message, serialize_response
+from ._serialize import (
+    deserialize_encapsulated_request,
+    serialize_message,
+    serialize_response,
+)
 from . import _handlers as _swill_handlers
 from ._types import Handler
 from .logging import create_logger
@@ -22,7 +32,7 @@ from ._helpers import closing_response, get_root_path
 from .config import Config
 
 
-current_app = contextvars.ContextVar('current_app')
+current_app = contextvars.ContextVar("current_app")
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +40,8 @@ logger = logging.getLogger(__name__)
 class Swill:
 
     default_config = {
-        'swill': {
-            'introspection': True,
+        "swill": {
+            "introspection": True,
         }
     }
 
@@ -45,37 +55,33 @@ class Swill:
     }
     _error_code_handlers: t.Dict[int, t.Callable] = {}
     _lifecycle_handlers: t.Dict[str, t.List[t.Callable]] = {
-        'before_connection': [],
-        'after_accept': [],
-        'before_request': [],
-        'before_request_metadata': [],
-        'before_request_message': [],
-        'before_request_data': [],
-        'before_leading_metadata': [],
-        'before_response_message': [],
-        'before_trailing_metadata': [],
-        'after_request': [],
-        'after_connection': [],
+        "before_connection": [],
+        "after_accept": [],
+        "before_request": [],
+        "before_request_metadata": [],
+        "before_request_message": [],
+        "before_request_data": [],
+        "before_leading_metadata": [],
+        "before_response_message": [],
+        "before_trailing_metadata": [],
+        "after_request": [],
+        "after_connection": [],
     }
 
     def __init__(
-        self,
-        import_name: str,
-        path='/ws',
-        debug: bool = None,
-        root_path: str = None
+        self, import_name: str, path="/ws", debug: bool = None, root_path: str = None
     ):
         self.config = self.load_config(root_path or get_root_path(import_name))
         if debug is not None:
-            self.config['swill.debug'] = debug
+            self.config["swill.debug"] = debug
         self.import_name = import_name
         self.debug = debug
         self.path = path
         current_app.set(self)
 
         # Add swill handlers
-        if self.config.get('swill.introspection'):
-            self.add_handler(_swill_handlers.introspect(self), 'swill.introspect')
+        if self.config.get("swill.introspection"):
+            self.add_handler(_swill_handlers.introspect(self), "swill.introspect")
 
     def load_config(self, path: str):
         return Config(path, deepcopy(self.default_config))
@@ -104,7 +110,7 @@ class Swill:
             raise ValueError(f"{name} is not a lifecycle")
 
         if handlers := self._lifecycle_handlers[name]:
-            logger.debug('Running %s lifecycle handlers for: %s', len(handlers), name)
+            logger.debug("Running %s lifecycle handlers for: %s", len(handlers), name)
 
             for handler in handlers:
                 await handler(*args)
@@ -116,12 +122,16 @@ class Swill:
 
     def handle(self, name: str = None) -> t.Callable[[Handler], t.Any]:
         """Handle an RPC request. If name is not given then the function name will be used instead"""
+
         def wrapper(f: Handler):
             self.add_handler(f, name)
             return f
+
         return wrapper
 
-    async def _handle_exception(self, exception: BaseException, message: EncapsulatedRequest):
+    async def _handle_exception(
+        self, exception: BaseException, message: EncapsulatedRequest
+    ):
         """Run the appropriate exception func for the given exception"""
         if exception.__class__ in self._exception_handlers:
             await self._exception_handlers[exception.__class__](exception, message)
@@ -141,7 +151,7 @@ class Swill:
         request_token = current_request.set(request)
         response_token = current_response.set(response)
         try:
-            await self._call_lifecycle_handlers('before_request_data', request, message)
+            await self._call_lifecycle_handlers("before_request_data", request, message)
             await request.process_message(message)
         except Exception as e:
             raise e
@@ -155,11 +165,10 @@ class Swill:
         encapsulated_message = deserialize_encapsulated_request(data)
         if current_task := asyncio.current_task():
             # Improve readability by setting the task name to the rpc to be called
-            current_task.set_name(f'func-{encapsulated_message.rpc}')
+            current_task.set_name(f"func-{encapsulated_message.rpc}")
 
         request_reference = RequestReference(
-            rpc=encapsulated_message.rpc,
-            seq=encapsulated_message.seq
+            rpc=encapsulated_message.rpc, seq=encapsulated_message.seq
         )
 
         # Send messages to the already open request for this request reference if it
@@ -176,14 +185,13 @@ class Swill:
             # We received and end or close message, yet we do not have an open reference for this
             # Issue a warning and return
             self.logger.warning(
-                'Received %s for %s but that reference is not open.',
+                "Received %s for %s but that reference is not open.",
                 encapsulated_message.type,
-                request_reference
+                request_reference,
             )
             return
 
         request = None
-        response = None
         request_token = None
         response_token = None
 
@@ -195,7 +203,7 @@ class Swill:
 
             request_token = current_request.set(request)
             await self._call_lifecycle_handlers(
-                'before_request', request, response, encapsulated_message
+                "before_request", request, response, encapsulated_message
             )
             await request.process_message(encapsulated_message)
             if handler.uses_response:
@@ -205,13 +213,15 @@ class Swill:
 
             if not handler.response_streams:
                 if isinstance(handler_coro, t.AsyncGenerator):
-                    raise RuntimeError("Received a streaming response for a single response type")
+                    raise RuntimeError(
+                        "Received a streaming response for a single response type"
+                    )
                 await self._process_single_response(
                     coro=handler_coro,
                     request=request,
                     response=response,
                     connection=connection,
-                    message_type=handler.response_message_type
+                    message_type=handler.response_message_type,
                 )
             else:
                 await self._process_streaming_response(
@@ -219,7 +229,7 @@ class Swill:
                     request=request,
                     response=response,
                     connection=connection,
-                    message_type=handler.response_message_type
+                    message_type=handler.response_message_type,
                 )
         except Exception as exception:
             await self._handle_exception(exception, encapsulated_message)
@@ -230,7 +240,7 @@ class Swill:
                 del connection.requests[request_reference]
 
             if request:
-                await self._call_lifecycle_handlers('after_request', request)
+                await self._call_lifecycle_handlers("after_request", request)
 
             if response_token:
                 current_response.reset(response_token)
@@ -242,19 +252,18 @@ class Swill:
 
         if encapsulated_message.rpc not in self._handlers:
             # Log that we couldn't find this handler
-            logger.info('no handler for `%s` was found', encapsulated_message.rpc)
-            raise HandlerNotFound('No func was found to process this request')
+            logger.info("no handler for `%s` was found", encapsulated_message.rpc)
+            raise HandlerNotFound("No func was found to process this request")
 
         request_reference = RequestReference(
-            rpc=encapsulated_message.rpc,
-            seq=encapsulated_message.seq
+            rpc=encapsulated_message.rpc, seq=encapsulated_message.seq
         )
         handler = self._handlers[encapsulated_message.rpc]
         request = handler.request_type(
             self,
             request_reference,
             encapsulated_message.metadata,
-            handler.request_message_type
+            handler.request_message_type,
         )
 
         return request, handler
@@ -265,21 +274,23 @@ class Swill:
         request: AnyRequest,
         response: Response,
         connection: Connection,
-        message_type: t.Any
+        message_type: t.Any,
     ):
+
         try:
             result = await coro
         except SwillRequestCancelled:
             # The handler didn't handle the request cancellation
-            pass
-
-        if request.cancelled:
-            logger.info('Request cancelled: %s', request)
             return
 
-        await self._call_lifecycle_handlers('before_trailing_metadata', request,
-                                            response.trailing_metadata)
-        await self._call_lifecycle_handlers('before_response_message', request, result)
+        if request.cancelled:
+            logger.info("Request cancelled: %s", request)
+            return
+
+        await self._call_lifecycle_handlers(
+            "before_trailing_metadata", request, response.trailing_metadata
+        )
+        await self._call_lifecycle_handlers("before_response_message", request, result)
         await connection.send(
             serialize_response(
                 data=serialize_message(result, message_type),
@@ -295,7 +306,7 @@ class Swill:
         request: AnyRequest,
         response: Response,
         connection: Connection,
-        message_type: t.Any
+        message_type: t.Any,
     ):
         """Process a streaming response"""
         # Wrap the generator so that it always closes
@@ -307,31 +318,30 @@ class Swill:
                     break
 
                 await self._call_lifecycle_handlers(
-                    'before_response_message',
-                    request,
-                    result
+                    "before_response_message", request, result
                 )
 
                 await connection.send(
                     serialize_response(
                         data=serialize_message(result, message_type),
                         seq=request.seq,
-                        leading_metadata=await response.consume_leading_metadata()
+                        leading_metadata=await response.consume_leading_metadata(),
                     )
                 )
 
         if request.cancelled:
-            logger.info('Request cancelled: %s', request)
+            logger.info("Request cancelled: %s", request)
             return
 
-        await self._call_lifecycle_handlers('before_trailing_metadata', self,
-                                            response.trailing_metadata)
+        await self._call_lifecycle_handlers(
+            "before_trailing_metadata", self, response.trailing_metadata
+        )
         await connection.send(
             serialize_response(
                 type=ResponseType.END_OF_STREAM,
                 seq=request.seq,
                 leading_metadata=await response.consume_leading_metadata(),
-                trailing_metadata=response.trailing_metadata
+                trailing_metadata=response.trailing_metadata,
             )
         )
 

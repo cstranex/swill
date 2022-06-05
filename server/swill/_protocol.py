@@ -60,7 +60,7 @@ class EncapsulatedResponse(EncapsulatedMessage):
     trailing_metadata: Optional[Metadata] = None
 
     def __repr__(self):
-        return f'<EncapsulatedResponse {self.type.name} #{self.seq}>'
+        return f"<EncapsulatedResponse {self.type.name} #{self.seq}>"
 
 
 class EncapsulatedRequest(EncapsulatedMessage):
@@ -73,4 +73,4 @@ class EncapsulatedRequest(EncapsulatedMessage):
     metadata: Optional[Metadata] = None
 
     def __repr__(self):
-        return f'<EncapsulatedRequest {self.type.name} #{self.seq}: {self.rpc}>'
+        return f"<EncapsulatedRequest {self.type.name} #{self.seq}: {self.rpc}>"

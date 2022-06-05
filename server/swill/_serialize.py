@@ -4,7 +4,12 @@ import msgspec
 
 from ._exceptions import SwillSerializationError, SwillDeserializationError
 from ._types import ErrorMessage
-from ._protocol import EncapsulatedResponse, EncapsulatedRequest, ResponseType, EncapsulatedMessage
+from ._protocol import (
+    EncapsulatedResponse,
+    EncapsulatedRequest,
+    ResponseType,
+    EncapsulatedMessage,
+)
 
 _encoder = msgspec.msgpack.Encoder()
 _decoder = msgspec.msgpack.Decoder(type=EncapsulatedRequest)
@@ -22,7 +27,7 @@ def deserialize_encapsulated_request(payload: bytes):
 def deserialize_message(
     encapsulated_message: EncapsulatedMessage, request_type: t.Optional[t.Any] = None
 ):
-    """Deserialize the message """
+    """Deserialize the message"""
     try:
         return msgspec.msgpack.decode(encapsulated_message.data, type=request_type)
     except msgspec.DecodeError as e:
@@ -50,16 +55,20 @@ def serialize_message(message: t.Any, message_type: t.Type = None) -> bytes:
 def serialize_response(**kwargs):
     """Serialize a response."""
 
-    kwargs['data'] = msgspec.Raw(kwargs.get('data', _none))
+    kwargs["data"] = msgspec.Raw(kwargs.get("data", _none))
 
     return _encoder.encode(EncapsulatedResponse(**kwargs))
 
 
-def serialize_error_response(message: str = '', *, code: int, seq: int, data: t.Any = None):
+def serialize_error_response(
+    message: str = "", *, code: int, seq: int, data: t.Any = None
+):
     """Serialize a standard error message"""
     data = ErrorMessage(code=code, message=message, data=data)
-    return _encoder.encode(EncapsulatedResponse(
-        type=ResponseType.ERROR,
-        seq=seq,
-        data=data,
-    ))
+    return _encoder.encode(
+        EncapsulatedResponse(
+            type=ResponseType.ERROR,
+            seq=seq,
+            data=data,
+        )
+    )

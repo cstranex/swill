@@ -3,7 +3,7 @@ import sys
 import logging
 import contextvars
 
-error_stream = contextvars.ContextVar('error_stream', default=sys.stderr)
+error_stream = contextvars.ContextVar("error_stream", default=sys.stderr)
 
 
 class _ColorStreamHandler(logging.StreamHandler):
@@ -76,7 +76,7 @@ def create_logger(app) -> logging.Logger:
 
 
 _logger = logging.getLogger("swill")
-_logger.setLevel(logging.getLevelName(os.getenv('SWILL_LOG_LEVEL', 'INFO')))
+_logger.setLevel(logging.getLevelName(os.getenv("SWILL_LOG_LEVEL", "INFO")))
 _internal_handler = _ColorStreamHandler()
 _internal_handler.setFormatter(
     logging.Formatter("[%(asctime)s] %(levelname)s in %(module)s: %(message)s")

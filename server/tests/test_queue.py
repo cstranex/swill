@@ -10,18 +10,18 @@ from swill._helpers import StreamingQueue
 async def test_streaming_queue_messages(event_loop):
     """Test the streaming queue consuming data"""
     queue = StreamingQueue()
-    queue.add('test')
-    queue.add('second')
-    queue.add('third')
+    queue.add("test")
+    queue.add("second")
+    queue.add("third")
 
     item = await queue.__anext__()
-    assert item == 'test'
+    assert item == "test"
 
     item = await queue.__anext__()
-    assert item == 'second'
+    assert item == "second"
 
     item = await queue.__anext__()
-    assert item == 'third'
+    assert item == "third"
 
     fut = asyncio.ensure_future(queue.__anext__(), loop=event_loop)
     with pytest.raises(asyncio.TimeoutError):
@@ -34,30 +34,31 @@ async def test_streaming_queue_messages(event_loop):
 async def test_streaming_queue_close():
     """Test the streaming queue consuming data and closing"""
     queue = StreamingQueue()
-    queue.add('test')
-    queue.add('second')
+    queue.add("test")
+    queue.add("second")
 
     item = await queue.__anext__()
-    assert item == 'test'
+    assert item == "test"
 
     queue.close()
 
     with pytest.raises(StopAsyncIteration):
         item = await queue.__anext__()
-        assert item == 'second'
+        assert item == "second"
         await queue.__anext__()
     for task in queue._tasks:
         task.cancel()
+
 
 @pytest.mark.asyncio
 async def test_streaming_queue_cancel():
     """Test the streaming queue consuming data and closing"""
     queue = StreamingQueue()
-    queue.add('test')
-    queue.add('second')
+    queue.add("test")
+    queue.add("second")
 
     item = await queue.__anext__()
-    assert item == 'test'
+    assert item == "test"
 
     queue.cancel()
 

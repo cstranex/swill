@@ -32,7 +32,7 @@ class ErrorCode(enum.IntEnum):
     INTERNAL_ERROR = 500
 
 
-T = t.TypeVar('T')
+T = t.TypeVar("T")
 
 
 class ContextVarType(t.Generic[T]):

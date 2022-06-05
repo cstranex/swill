@@ -24,22 +24,21 @@ async def test_set_leading_metadata(mocker):
     current_connection.set(connection)
     response, swill, request = create_test_response(mocker)
     response.send_leading_metadata = mocker.AsyncMock(spec=response.send_leading_metadata)
-    await response.set_leading_metadata({'key': 'value'}, send_immediately=False)
+    await response.set_leading_metadata({"key": "value"}, send_immediately=False)
     response.send_leading_metadata.assert_not_called()
-    assert response.leading_metadata == {'key': 'value'}
+    assert response.leading_metadata == {"key": "value"}
 
 
 @pytest.mark.asyncio
 async def test_set_leading_metadata_immediately(mocker):
-    """Test setting send immediately """
+    """Test setting send immediately"""
 
     connection = mocker.MagicMock()
     current_connection.set(connection)
     response, swill, request = create_test_response(mocker)
     response.send_leading_metadata = mocker.AsyncMock(spec=response.send_leading_metadata)
-    await response.set_leading_metadata({'key': 'value'})
+    await response.set_leading_metadata({"key": "value"})
     response.send_leading_metadata.assert_called()
-
 
 
 @pytest.mark.asyncio
@@ -48,13 +47,11 @@ async def test_consume_metadata(mocker):
     connection = mocker.MagicMock()
     current_connection.set(connection)
     response, swill, request = create_test_response(mocker)
-    await response.set_leading_metadata({'key': 'value'}, send_immediately=False)
-    assert await response.consume_leading_metadata() == {'key': 'value'}
+    await response.set_leading_metadata({"key": "value"}, send_immediately=False)
+    assert await response.consume_leading_metadata() == {"key": "value"}
 
     swill._call_lifecycle_handlers.assert_called_with(
-        'before_leading_metadata',
-        request,
-        {'key': 'value'}
+        "before_leading_metadata", request, {"key": "value"}
     )
 
 
@@ -63,27 +60,25 @@ async def test_duplicate_consume(mocker):
     connection = mocker.MagicMock()
     current_connection.set(connection)
     response, swill, request = create_test_response(mocker)
-    await response.set_leading_metadata({'key': 'value'}, send_immediately=False)
-    assert await response.consume_leading_metadata() == {'key': 'value'}
+    await response.set_leading_metadata({"key": "value"}, send_immediately=False)
+    assert await response.consume_leading_metadata() == {"key": "value"}
     assert await response.consume_leading_metadata() == None
 
 
 @pytest.mark.asyncio
 async def test_send_leading_metadata(mocker):
-    serializer = mocker.patch('swill._response.serialize_response')
+    serializer = mocker.patch("swill._response.serialize_response")
     connection = mocker.MagicMock()
     connection.send = mocker.AsyncMock()
 
     current_connection.set(connection)
     response, swill, request = create_test_response(mocker)
-    response.consume_leading_metadata = mocker.AsyncMock(return_value='XXX')
-    await response.set_leading_metadata({'key': 'value'}, send_immediately=False)
+    response.consume_leading_metadata = mocker.AsyncMock(return_value="XXX")
+    await response.set_leading_metadata({"key": "value"}, send_immediately=False)
     await response.send_leading_metadata()
     connection.send.assert_called()
     serializer.assert_called_with(
-        seq=request.seq,
-        type=ResponseType.METADATA,
-        leading_metadata='XXX'
+        seq=request.seq, type=ResponseType.METADATA, leading_metadata="XXX"
     )
 
 
@@ -94,7 +89,7 @@ async def test_duplicate_send(mocker):
 
     current_connection.set(connection)
     response, swill, request = create_test_response(mocker)
-    await response.set_leading_metadata({'key': 'value'}, send_immediately=False)
+    await response.set_leading_metadata({"key": "value"}, send_immediately=False)
     await response.send_leading_metadata()
     with pytest.raises(SwillResponseError):
         await response.send_leading_metadata()
@@ -108,7 +103,7 @@ async def test_set_after_send(mocker):
     current_connection.set(connection)
     response, swill, request = create_test_response(mocker)
     response.send_leading_metadata = mocker.AsyncMock(spec=response.send_leading_metadata)
-    await response.set_leading_metadata({'key': 'value'})
+    await response.set_leading_metadata({"key": "value"})
     response._leading_metadata_sent = True
     with pytest.raises(SwillResponseError):
-        await response.set_leading_metadata({'key2': 'value2'})
+        await response.set_leading_metadata({"key2": "value2"})

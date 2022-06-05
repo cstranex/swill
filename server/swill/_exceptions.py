@@ -40,7 +40,7 @@ class CloseConnection(SwillException):
     If the code is below 1000 then it will return the standard WebSocket status code 1000 instead.
     """
 
-    def __init__(self, *, code: int = 1000, reason: str = ''):
+    def __init__(self, *, code: int = 1000, reason: str = ""):
         super().__init__()
         self.code = code
         self.reason = reason
@@ -52,6 +52,6 @@ class CloseConnection(SwillException):
 class Error(SwillException):
     """A generic error that can be raised in your func"""
 
-    def __init__(self, *, code: int = 400, message: str = ''):
+    def __init__(self, *, code: int = 400, message: str = ""):
         super().__init__(message)
         self.code = code

@@ -25,13 +25,17 @@ class Response:
         the first response"""
 
         if self._leading_metadata_sent:
-            raise SwillResponseError("Leading metadata has already been sent for this request")
+            raise SwillResponseError(
+                "Leading metadata has already been sent for this request"
+            )
 
-        await current_connection.get().send(serialize_response(
-            seq=self._request.seq,
-            type=ResponseType.METADATA,
-            leading_metadata=await self.consume_leading_metadata()
-        ))
+        await current_connection.get().send(
+            serialize_response(
+                seq=self._request.seq,
+                type=ResponseType.METADATA,
+                leading_metadata=await self.consume_leading_metadata(),
+            )
+        )
 
     async def set_leading_metadata(self, metadata: Metadata, send_immediately=True):
         """Set leading metadata for this request. This can only be set once"""
@@ -54,9 +58,7 @@ class Response:
             return
 
         await self._swill._call_lifecycle_handlers(
-            'before_leading_metadata',
-            self._request,
-            self._leading_metadata
+            "before_leading_metadata", self._request, self._leading_metadata
         )
 
         self._leading_metadata_sent = True
@@ -78,7 +80,9 @@ class Response:
         return self._trailing_metadata
 
     def __repr__(self):
-        return f'<Response {self._request.reference}>'
+        return f"<Response {self._request.reference}>"
 
 
-current_response = t.cast(ContextVarType[Response], contextvars.ContextVar('current_response'))
+current_response = t.cast(
+    ContextVarType[Response], contextvars.ContextVar("current_response")
+)

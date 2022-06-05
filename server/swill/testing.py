@@ -2,7 +2,12 @@ import asyncio
 import typing as t
 import msgspec
 from swill import ConnectionData, Connection, current_connection
-from swill._protocol import RequestType, EncapsulatedRequest, EncapsulatedResponse, ResponseType
+from swill._protocol import (
+    RequestType,
+    EncapsulatedRequest,
+    EncapsulatedResponse,
+    ResponseType,
+)
 from swill._serialize import serialize_message, deserialize_message
 from swill._types import Metadata, ErrorMessage
 
@@ -38,7 +43,9 @@ class SwillTestRequest:
     class CloseContext(Exception):
         pass
 
-    def __init__(self, app: "Swill", initial_request: EncapsulatedRequest, connection: Connection):
+    def __init__(
+        self, app: "Swill", initial_request: EncapsulatedRequest, connection: Connection
+    ):
         self.app = app
         self.request = initial_request
         self.connection = SwillTestConnection(connection)
@@ -73,11 +80,11 @@ class SwillTestRequest:
 
         # We need to decode the data
         return {
-            'seq': response_message.seq,
-            'type': response_message.type,
-            'data': message,
-            'leading_metadata': response_message.leading_metadata,
-            'trailing_metadata': response_message.trailing_metadata,
+            "seq": response_message.seq,
+            "type": response_message.type,
+            "data": message,
+            "leading_metadata": response_message.leading_metadata,
+            "trailing_metadata": response_message.trailing_metadata,
         }
 
     async def send(
@@ -92,7 +99,7 @@ class SwillTestRequest:
             type=type,
             data=data,
             metadata=metadata,
-            seq=self.request.seq
+            seq=self.request.seq,
         )
         await self.app._handle_request(serialize_message(request), self.connection)
 
@@ -123,6 +130,7 @@ class SwillTestRequest:
 
         return not exc_type or exc_type == self.CloseContext
 
+
 class SwillTestClient:
     """Swill Test Client that can be used to test your Swill Application.
 
@@ -146,25 +154,20 @@ class SwillTestClient:
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
-        connection_data = ConnectionData({
-            'subprotocols': ConnectionData.subprotocol
-        })
-        await self.app._call_lifecycle_handlers('before_connection', connection_data)
+        connection_data = ConnectionData({"subprotocols": ConnectionData.subprotocol})
+        await self.app._call_lifecycle_handlers("before_connection", connection_data)
 
         # Create a new Connection object
-        self.connection = Connection(
-            self._send,
-            connection_data
-        )
+        self.connection = Connection(self._send, connection_data)
 
-        await self.app._call_lifecycle_handlers('after_accept', self.connection)
+        await self.app._call_lifecycle_handlers("after_accept", self.connection)
         self.token = current_connection.set(Connection)
 
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.connection:
-            await self.app._call_lifecycle_handlers('after_connection', self.connection)
+            await self.app._call_lifecycle_handlers("after_connection", self.connection)
         if self.token:
             current_connection.reset(self.token)
 
@@ -178,7 +181,7 @@ class SwillTestClient:
         data: t.Any,
         metadata: Metadata = None,
         type: RequestType = RequestType.MESSAGE,
-        seq: int = None
+        seq: int = None,
     ):
         """Send a message. Takes care of generating a sequence id unless passed"""
         if not seq:
@@ -186,11 +189,7 @@ class SwillTestClient:
             seq = self._current_sequence_id
 
         req = EncapsulatedRequest(
-            seq=seq,
-            rpc=rpc,
-            type=type,
-            data=data,
-            metadata=metadata
+            seq=seq, rpc=rpc, type=type, data=data, metadata=metadata
         )
 
         return SwillTestRequest(self.app, req, self.connection)
