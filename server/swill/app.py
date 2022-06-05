@@ -241,6 +241,8 @@ class Swill:
     def _create_request(self, encapsulated_message: EncapsulatedRequest):
 
         if encapsulated_message.rpc not in self._handlers:
+            # Log that we couldn't find this handler
+            logger.info('no handler for `%s` was found', encapsulated_message.rpc)
             raise HandlerNotFound('No func was found to process this request')
 
         request_reference = RequestReference(

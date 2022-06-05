@@ -74,12 +74,6 @@ def introspect(swill: "Swill"):
 
 # Exception Handlers
 async def handle_not_found(exception: BaseException, message: EncapsulatedRequest):
-    traceback.print_exception(
-        exception.__class__,
-        exception,
-        exception.__traceback__
-    )
-
     await current_connection.get().send(
         serialize_error_response(
             code=ErrorCode.NOT_FOUND,
