@@ -1,10 +1,10 @@
 import logging
 import asyncio
 import contextvars
-import inspect
 import os
 import sys
 import typing as t
+from copy import deepcopy
 from functools import cached_property
 
 from ._response import Response, current_response
@@ -18,7 +18,8 @@ from ._serialize import deserialize_encapsulated_request, serialize_message, ser
 from . import _handlers as _swill_handlers
 from ._types import Handler
 from .logging import create_logger
-from ._helpers import closing_response
+from ._helpers import closing_response, get_root_path
+from .config import Config
 
 
 current_app = contextvars.ContextVar('current_app')
@@ -27,9 +28,14 @@ logger = logging.getLogger(__name__)
 
 
 class Swill:
-    config = {
-        'introspection.enabled': True
+
+    default_config = {
+        'swill': {
+            'introspection': True,
+        }
     }
+
+    config: Config = None
     asgi_app = None
     _handlers: t.Dict[str, _SwillRequestHandler] = {}
     _exception_handlers: t.Dict[t.Type[BaseException], t.Callable] = {
@@ -52,14 +58,27 @@ class Swill:
         'after_connection': [],
     }
 
-    def __init__(self, import_name: str, path='/ws', debug=False):
+    def __init__(
+        self,
+        import_name: str,
+        path='/ws',
+        debug: bool = None,
+        root_path: str = None
+    ):
+        self.config = self.load_config(root_path or get_root_path(import_name))
+        if debug is not None:
+            self.config['swill.debug'] = debug
         self.import_name = import_name
         self.debug = debug
         self.path = path
         current_app.set(self)
+
         # Add swill handlers
-        if self.config.get('introspection.enabled'):
+        if self.config.get('swill.introspection'):
             self.add_handler(_swill_handlers.introspect(self), 'swill.introspect')
+
+    def load_config(self, path: str):
+        return Config(path, deepcopy(self.default_config))
 
     @property
     def name(self) -> str:
