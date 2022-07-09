@@ -352,6 +352,3 @@ class Swill:
             )
 
         return await self.asgi_app(scope, receive, send)
-
-    def run(self):
-        pass
