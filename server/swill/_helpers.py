@@ -54,6 +54,9 @@ class StreamingQueue(t.AsyncIterable):
         if self._cancel_event.is_set():
             raise SwillRequestCancelled()
 
+        if self._close_event.is_set() and not self._queue.qsize():
+            raise StopAsyncIteration()
+
         _get_item = asyncio.create_task(
             self._queue.get(), name=f"swill-queue-{self.name}"
         )
