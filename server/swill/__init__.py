@@ -10,4 +10,4 @@ from ._exceptions import (
 )
 from .app import Swill, current_app
 
-__version__ = "1.0.0.alpha-1"
+__version__ = "0.1.0"
