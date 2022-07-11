@@ -130,14 +130,14 @@ Generate documentation from your handlers, types and docstrings automatically.
 
 ## TODO
  - [ ] Python Client
- - [ ] Typescript Client
+ - [X] Typescript Client
  - [ ] Auto-Generated Client Libraries for Typescript
  - [X] Streaming requests
  - [X] Streaming responses
  - [X] Leading and trailing metadata
  - [X] Exception Handling
    - [X] Tracebacks
- - [ ] Connection Management
+ - [X] Connection Management
  - [ ] Session Management
    - [ ] Redis Backend
  - [ ] PubSub Plugin
@@ -145,5 +145,5 @@ Generate documentation from your handlers, types and docstrings automatically.
  - [ ] Static File Serving
  - [X] Introspection
  - [ ] Auto-Generated API Doc/Playground 
- - [ ] Unit Tests
+ - [-] Unit Tests
  - [ ] Validators on Serialize/Deserialize
