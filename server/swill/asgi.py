@@ -24,7 +24,7 @@ class AsgiApplication:
 
         # We only deal with websockets. In the future we might also support calling non-streaming requests
         # via HTTP.
-        if scope.get("type") != "websocket" or scope.get("path") not in self.paths:
+        if scope.get("type") != "websocket":
             logger.debug("Non-websocket request")
             await send(
                 {
@@ -34,6 +34,13 @@ class AsgiApplication:
                 }
             )
             await send({"type": "http.response.body", "body": b"404 Not Found"})
+            return
+
+        if scope.get("path") not in self.paths:
+            logger.debug("Websocket request with invalid path: %s", scope.get("path"))
+            await send(
+                {"type": "websocket.close", "code": 1008, "reason": "404 Not Found"}
+            )
             return
 
         if not (connection_data := await self._websocket_handshake(scope, receive, send)):
