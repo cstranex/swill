@@ -1,8 +1,10 @@
 """Swill in-built Handlers"""
 
+import asyncio
 import inspect
 import traceback
 import typing as t
+import functools
 from collections.abc import AsyncIterator
 
 from . import StreamingRequest
@@ -16,11 +18,30 @@ from ._exceptions import Error
 from ._serialize import serialize_error_response
 
 
+def wrap_sync_handler(f: Handler) -> Handler:
+    """Wrap a synchronous handler"""
+
+    @functools.wraps(f)
+    async def handler(*args, **kwargs):
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None,  # TODO: Allow user to specify an executor to use
+            functools.partial(f, *args, **kwargs),
+        )
+        return result
+
+    return handler
+
+
 def create_handler(f: Handler) -> _SwillRequestHandler:
     """Create a SwillRequestHandler for the given handler"""
 
+    can_stream = True
     if not inspect.iscoroutinefunction(f) and not inspect.isasyncgenfunction(f):
-        raise ValueError(f"Request handler {f} must be async")
+        # If we are given a non-async function then we will wrap it in a executor.
+        # This will limit it to be non-streaming
+        can_stream = False
+        f = wrap_sync_handler(f)
 
     function_types = t.get_type_hints(f)
     parameter_names = list(inspect.signature(f).parameters.keys())
@@ -46,6 +67,9 @@ def create_handler(f: Handler) -> _SwillRequestHandler:
             uses_response = function_types[parameter_names[1]] == Response
     else:
         _args = None
+
+    if not can_stream and (request_streams or response_streams):
+        raise RuntimeError("Synchronous handlers cannot handle streaming messages")
 
     message_type = _args[0] if _args else None
     return _SwillRequestHandler(
