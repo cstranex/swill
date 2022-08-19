@@ -1,3 +1,7 @@
+import typing as t
+from collections import defaultdict
+
+
 class SwillException(Exception):
     pass
 
@@ -8,6 +12,28 @@ class SwillSerializationError(SwillException):
 
 class SwillDeserializationError(SwillException):
     pass
+
+
+class SwillValidationError(SwillException):
+    def __init__(
+        self, exceptions: t.List[t.Tuple[t.List[str], t.Union[ValueError, TypeError]]]
+    ):
+        super().__init__("Validation error")
+        self.code = 422
+        self.data = {}
+        for fields, exception in exceptions:
+            if not fields:
+                fields = ["*"]
+            for field in fields:
+                if field not in self.data:
+                    self.data[field] = []
+                if isinstance(exception, SwillValidationError):
+                    self.data[field].append(exception.data)
+                else:
+                    self.data[field].append({"description": str(exception)})
+
+    def __repr__(self):
+        return f"SwillValidationError: {self.data}"
 
 
 class SwillRequestError(SwillException):

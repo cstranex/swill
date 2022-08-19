@@ -28,6 +28,8 @@ class ErrorCode(enum.IntEnum):
     NOT_FOUND = 404
     FORBIDDEN = 403
 
+    VALIDATION_ERROR = 422
+
     INVALID_RPC = 501
     INTERNAL_ERROR = 500
 

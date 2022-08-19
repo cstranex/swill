@@ -10,6 +10,7 @@ from ._protocol import (
     ResponseType,
     EncapsulatedMessage,
 )
+from .validators import validate_constraints
 
 _encoder = msgspec.msgpack.Encoder()
 _decoder = msgspec.msgpack.Decoder(type=EncapsulatedRequest)
@@ -29,7 +30,13 @@ def deserialize_message(
 ):
     """Deserialize the message"""
     try:
-        return msgspec.msgpack.decode(encapsulated_message.data, type=request_type)
+        decoded_message = msgspec.msgpack.decode(
+            encapsulated_message.data,
+            type=request_type,
+        )
+        # Optionally, perform any constrain validations on the message
+        validate_constraints(decoded_message)
+        return decoded_message
     except msgspec.DecodeError as e:
         raise SwillDeserializationError(e)
 

@@ -51,7 +51,9 @@ attached to one connection.
 
 ### Message Validation
 [msgspec](https://jcristharif.com/msgspec/) is used to perform serialization and validation
-on messages being sent and received. 
+on messages being sent and received. Additionally, messages can be enhanced with ValidatedStructs
+to perform constraint validation on data. Constraints support [annotated-types](https://github.com/annotated-types/annotated-types)
+as well as method validators using the `@validator` decorator
 
 ### Typing Annotations
 Typing annotations are used in conjunction with `msgspec` to determine how handlers process
@@ -146,4 +148,4 @@ Generate documentation from your handlers, types and docstrings automatically.
  - [X] Introspection
  - [ ] Auto-Generated API Doc/Playground 
  - [-] Unit Tests
- - [ ] Validators on Serialize/Deserialize
+ - [-] Constraint validators on Deserialize

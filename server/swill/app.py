@@ -25,7 +25,7 @@ from ._serialize import (
     serialize_message,
     serialize_response,
 )
-from . import _handlers as _swill_handlers
+from . import _handlers as _swill_handlers, SwillValidationError
 from ._types import Handler
 from .logging import create_logger
 from ._helpers import closing_response, get_root_path
@@ -51,6 +51,7 @@ class Swill:
     _exception_handlers: t.Dict[t.Type[BaseException], t.Callable] = {
         BaseException: _swill_handlers.handle_catch_all,
         HandlerNotFound: _swill_handlers.handle_not_found,
+        SwillValidationError: _swill_handlers.handle_validation_error,
         Error: _swill_handlers.handle_error,
     }
     _error_code_handlers: t.Dict[int, t.Callable] = {}

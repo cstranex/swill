@@ -7,7 +7,7 @@ import typing as t
 import functools
 from collections.abc import AsyncIterator
 
-from . import StreamingRequest
+from . import StreamingRequest, SwillValidationError
 from ._connection import current_connection
 from ._response import Response
 from ._types import ErrorCode, StreamingResponse, Handler
@@ -43,7 +43,7 @@ def create_handler(f: Handler) -> _SwillRequestHandler:
         can_stream = False
         f = wrap_sync_handler(f)
 
-    function_types = t.get_type_hints(f)
+    function_types = t.get_type_hints(f, include_extras=True)
     parameter_names = list(inspect.signature(f).parameters.keys())
     response_message_type = function_types.get("return", None)
     request_type = Request
@@ -124,5 +124,18 @@ async def handle_error(exception: Error, message: EncapsulatedRequest):
     await current_connection.get().send(
         serialize_error_response(
             code=exception.code, seq=message.seq, message=str(exception)
+        )
+    )
+
+
+async def handle_validation_error(
+    exception: SwillValidationError, message: EncapsulatedRequest
+):
+    await current_connection.get().send(
+        serialize_error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            seq=message.seq,
+            message=str(exception),
+            data=exception.data,
         )
     )
