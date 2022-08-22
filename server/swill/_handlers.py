@@ -135,7 +135,7 @@ async def handle_validation_error(
         serialize_error_response(
             code=ErrorCode.VALIDATION_ERROR,
             seq=message.seq,
-            message=str(exception),
+            message="Validation Error",
             data=exception.data,
         )
     )

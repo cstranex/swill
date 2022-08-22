@@ -14,23 +14,52 @@ class SwillDeserializationError(SwillException):
     pass
 
 
+class ValidationExceptionItem(t.NamedTuple):
+    field: str
+    index: t.Optional[t.Union[int, str]]
+    exception: Exception
+
+
+class ComplexValidationError(SwillException):
+    def __init__(self, exceptions: t.List[Exception], data: t.Mapping[str, t.Any] = None):
+        super().__init__(", ".join(str(exception) for exception in exceptions))
+        self.data = dict(data or {})
+        self.data["errors"] = []
+        self.exceptions = exceptions
+        for exception in exceptions:
+            if isinstance(exception, (SwillValidationError, ComplexValidationError)):
+                self.data["errors"].append(exception.data)
+            else:
+                self.data["errors"].append({"description": str(exception)})
+
+
 class SwillValidationError(SwillException):
-    def __init__(
-        self, exceptions: t.List[t.Tuple[t.List[str], t.Union[ValueError, TypeError]]]
-    ):
-        super().__init__("Validation error")
+    def __init__(self, exceptions: t.List[ValidationExceptionItem]):
+        super().__init__("Validation Error")
         self.code = 422
         self.data = {}
-        for fields, exception in exceptions:
-            if not fields:
-                fields = ["*"]
-            for field in fields:
-                if field not in self.data:
-                    self.data[field] = []
-                if isinstance(exception, SwillValidationError):
-                    self.data[field].append(exception.data)
-                else:
-                    self.data[field].append({"description": str(exception)})
+        for field, index, exception in exceptions:
+            if not field:
+                field = "*"
+
+            if field not in self.data:
+                self.data[field] = []
+
+            if isinstance(exception, SwillValidationError):
+                exc_data = dict(exception.data)
+            elif isinstance(exception, ComplexValidationError):
+                exc_data = dict(exception.data)
+            else:
+                exc_data = {"description": str(exception)}
+
+            if index is not None:
+                exc_data = {"index": index, "errors": [exc_data]}
+
+            self.data[field].append(exc_data)
+
+    def __str__(self):
+        err = "\n".join([f"\t{item}: {self.data[item]}" for item in self.data])
+        return f"{len(self.data)} validation errors:\n{err}"
 
     def __repr__(self):
         return f"SwillValidationError: {self.data}"

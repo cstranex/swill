@@ -2,6 +2,8 @@
 
 Swill supports annotated-types
 """
+import inspect
+from dataclasses import dataclass
 from datetime import timezone
 from collections import abc
 import functools
@@ -11,10 +13,42 @@ import typing as t
 import annotated_types as at
 from msgspec import Struct
 
-from swill._exceptions import SwillValidationError
-
+from swill._exceptions import (
+    SwillValidationError,
+    ValidationExceptionItem,
+    ComplexValidationError,
+)
 
 Constraint = t.Union[at.BaseMetadata, slice, "re.Pattern[bytes]", "re.Pattern[str]"]
+
+# Consider these validation errors
+ValidationExceptions = (
+    TypeError,
+    ValueError,
+    SwillValidationError,
+    ComplexValidationError,
+)
+
+
+@t.runtime_checkable
+class Validatable(t.Protocol):
+    """Implement the __validate__ method that validates the data in the object
+    raising one of the ValidationExceptions on error or returning None"""
+
+    def __validate__(self) -> None:
+        ...
+
+
+@dataclass
+class ValidatorDefinition:
+    """Definition of a validator"""
+
+    fields: t.Optional[t.Union[t.List[str], t.Tuple[str], t.Tuple[int]]]
+    callback: t.Callable
+    each: bool = False
+    optional: bool = True
+    pre: bool = False
+    options: t.List[str] = ""
 
 
 def _check_gt(_, value: t.Any, constraint: Constraint):
@@ -75,12 +109,87 @@ def _check_regex(_, value: t.Any, constraint: re.Pattern):
         raise ValueError(f"Does not match pattern: {constraint.pattern}")
 
 
-def _nested_validator(_, value: t.Any):
-    if _is_iterable(type(value)):
-        for v in value:
-            v.__validate__()
-    else:
-        value.__validate__()
+def _nested_validator(_, value: t.Any, validators: t.List[ValidatorDefinition] = None):
+    """Either call the list of validators with the given value or call
+    value.__validate__()"""
+
+    index = None
+    try:
+        if validators:
+            for validator_def in validators:
+                each = validator_def.each
+                callback = validator_def.callback
+
+                if each:
+                    for index, v in enumerate(value):
+                        callback(v.__class__, v)
+                else:
+                    callback(value.__class__, value)
+        else:
+            if _is_eachable(type(value)):
+                for index, v in enumerate(value):
+                    v.__validate__()
+            else:
+                value.__validate__()
+    except ValidationExceptions as exc:
+        if index is None:
+            raise exc
+
+        exc_data = {"index": index}
+        raise ComplexValidationError([exc], exc_data) from exc
+
+
+def _is_eachable(typ: t.Type):
+    """Return True if typ is a Sequence (eg: List, Set). For Tuple types this will
+    return True *only* if the tuple is defined with Ellipsis (eg: Tuple[str, ...])
+
+    NB: String and bytes are not considered eachable
+    """
+    origin = t.get_origin(typ)
+    if not origin:
+        return issubclass(typ, t.Sequence) and not issubclass(typ, (str, bytes))
+    if origin == tuple:
+        # Check if we have ellipsis or not
+        return Ellipsis in t.get_args(typ)
+
+    return issubclass(origin, t.Sequence)
+
+
+def _validate_tuple(
+    _, value: t.Tuple[t.Any, ...], validators=t.Sequence[ValidatorDefinition]
+):
+    """Call the list of validators on each item of the given tuple"""
+    index = None
+    try:
+        for definition in validators:
+            index = definition.fields[0]
+            definition.callback(value.__class__, value[index])
+    except ValidationExceptions as exc:
+        exc_data = {"index": index}
+        raise ComplexValidationError([exc], exc_data) from exc
+
+
+def _validate_dict_keys(
+    _, value: t.Dict[t.Any, t.Any], validators=t.Sequence[ValidatorDefinition]
+):
+    """Call the list of validators on each key for the given dict"""
+    for definition in validators:
+        for key in value.keys():
+            definition.callback(value.__class__, key)
+
+
+def _validate_dict_values(
+    _, value: t.Dict[t.Any, t.Any], validators=t.Sequence[ValidatorDefinition]
+):
+    """Call the list of validators on each value for a given dict"""
+    key = None
+    try:
+        for definition in validators:
+            for key, v in value.items():
+                definition.callback(value.__class__, v)
+    except ValidationExceptions as exc:
+        exc_data = {"key": key}
+        raise ComplexValidationError([exc], exc_data) from exc
 
 
 _VALIDATORS: t.Dict[t.Type[Constraint], t.Callable] = {
@@ -97,21 +206,101 @@ _VALIDATORS: t.Dict[t.Type[Constraint], t.Callable] = {
 }
 
 
-def _constraints_for_type(
-    tp: t.Type,
-) -> t.Iterator[t.Tuple[str, t.Iterable[Constraint]]]:
-    """Yield a tuple of field name, constraint arguments for the given type"""
+def _extract_validators_from_type_annotation(
+    name: t.Union[str, int], annotation: t.Type, each=False, nested=False
+):
+    """Creates validators from the given type annotations. Used primarily to create
+    validators for nested fields that are specified with typing annotations or for
+    objects that implement the __validate__() method
+    """
 
-    for name, hint in t.get_type_hints(tp, include_extras=True).items():
-        if not t.get_origin(hint) is t.Annotated:
-            continue
-        args = iter(t.get_args(hint))
-        next(args)  # skip the first argument which is the type
-        args = iter(t.get_args(hint))
-        yield (
-            name,
-            filter(lambda a: isinstance(a, (at.BaseMetadata, re.Pattern, slice)), args),
+    validators = []
+    origin = t.get_origin(annotation)
+    if origin is None:  # eg: str, int or something that is Validatable
+        if issubclass(annotation, Validatable):
+            # The target type supports __validate__() so return that.
+            return [ValidatorDefinition((name,), _nested_validator)]
+    elif origin == t.Annotated:
+        # The type annotation is annotated meaning we probably have constraints for it
+        annotated_type, *annotated_args = t.get_args(annotation)
+
+        arg_validators = _extract_validators_from_type_annotation(name, annotated_type)
+        if arg_validators:
+            validators.extend(arg_validators)
+
+        for arg in annotated_args:
+            if not isinstance(arg, (at.BaseMetadata, re.Pattern, slice)):
+                continue
+            if validator_callable := _VALIDATORS.get(type(arg)):
+                validators.append(
+                    ValidatorDefinition(
+                        (name,),
+                        functools.partial(validator_callable, constraint=arg),
+                        each,
+                    )
+                )
+        return validators
+    elif issubclass(origin, t.Mapping):
+        # Validators can be applied on either the key or the value of the mapping
+        # depending on where they are defined
+
+        key_type, value_type = t.get_args(annotation)
+
+        key_validators = list(
+            _extract_validators_from_type_annotation("", key_type, each=True)
         )
+        if key_validators:
+            validators.append(
+                ValidatorDefinition(
+                    (name,),
+                    functools.partial(_validate_dict_keys, validators=key_validators),
+                )
+            )
+
+        value_validators = list(
+            _extract_validators_from_type_annotation("", value_type, each=True)
+        )
+        if value_validators:
+            validators.append(
+                ValidatorDefinition(
+                    (name,),
+                    functools.partial(_validate_dict_values, validators=value_validators),
+                )
+            )
+
+    elif _is_eachable(annotation):  # Iterable fields such as List, Set, Sequence
+        annotated_type = t.get_args(annotation)[0]
+        validators.extend(
+            _extract_validators_from_type_annotation(
+                name, annotated_type, each=True, nested=True
+            )
+        )
+    elif issubclass(origin, tuple):  # Tuple types that don't have ellipsis
+        tuple_args = t.get_args(annotation)
+        tuple_validators = []
+        for n, arg in enumerate(tuple_args):
+            tuple_validators.extend(
+                _extract_validators_from_type_annotation(n, arg, False)
+            )
+
+        if tuple_validators:
+            validators.append(
+                ValidatorDefinition(
+                    (name,),
+                    functools.partial(_validate_tuple, validators=tuple_validators),
+                )
+            )
+
+    if nested and validators:
+        return [
+            ValidatorDefinition(
+                (name,),
+                functools.partial(_nested_validator, validators=validators),
+                each,
+            )
+        ]
+
+    return validators
 
 
 def _is_iterable(hint: t.Any):
@@ -139,87 +328,114 @@ class ValidatedStruct(Struct):
 
     """
 
-    __validators__ = []
+    __validators__: t.List[ValidatorDefinition] = []
 
     @classmethod
-    def _add_validator(cls, validator_def):
-        fields, callback, each = validator_def
-        if not fields:
-            cls.__validators__.append((tuple(), callback, False))
+    def _add_validator(cls, definition: ValidatorDefinition):
+        if not definition.fields:
+            cls.__validators__.append(definition)
         else:
             hints = t.get_type_hints(cls)
-            for field in fields:
+            for field in definition.fields:
                 if field not in cls.__slots__:
                     raise RuntimeError(f"{field} is not a valid struct field")
-                if each:
-                    # We only accept one field and that field must be iterable
-                    assert len(field) == 1
-                    hint = hints.get(field[0])
-                    if not _is_iterable(hint):
+                if definition.each:
+                    hint = hints.get(field)
+                    if t.get_origin(hint) == t.Union:
+                        for arg in t.get_args(hint):
+                            is_none = isinstance(arg, type) and issubclass(
+                                arg, type(None)
+                            )
+                            if not is_none and not _is_iterable(arg):
+                                raise RuntimeError(
+                                    f"{field} is not iterable. Cannot use `each`"
+                                )
+                    elif not _is_iterable(hint):
                         raise RuntimeError(f"{field} is not iterable. Cannot use `each`")
 
-                cls.__validators__.append(validator_def)
+                cls.__validators__.append(definition)
 
     def __init_subclass__(cls, **kwargs):
         cls.__validators__ = []
-        # Find any constraint validators defined by type annotations
-        for field, constraints in _constraints_for_type(cls):
-            for constraint in constraints:
-                if validator_callable := _VALIDATORS.get(type(constraint)):
-                    cls._add_validator(
-                        (
-                            (field,),
-                            functools.partial(validator_callable, constraint=constraint),
-                            False,
-                        )
-                    )
+        type_definitions = t.get_type_hints(cls, include_extras=True)
+        for field in cls.__slots__:
+            definitions = _extract_validators_from_type_annotation(
+                field, type_definitions.get(field), each=False, nested=True
+            )
+            for definition in definitions:
+                cls._add_validator(definition)
 
         # Get validators defined by the @validator decorator
         for name in cls.__dict__:
             if validator_def := getattr(getattr(cls, name), "__validator__", None):
                 cls._add_validator(validator_def)
 
-        hints = t.get_type_hints(cls)
-        for field in cls.__slots__:
-            # Find any nested ValidatedStructs
-            hint = hints.get(field)
-            args = list(t.get_args(hint))
-            if not t.get_origin(hint):
-                args.append(hint)
-            for arg in args:
-                if issubclass(arg, ValidatedStruct):
-                    cls._add_validator(((field,), _nested_validator, False))
+        # Re-order the validators
+        cls.__validators__.sort(key=lambda definition: definition.pre)
 
     def __validate__(self):
         exceptions = []
         all_exceptions = hasattr(self, "Meta") and getattr(self.Meta, "return_all_errors")
 
-        for fields, callback, each in self.__validators__:
-            if not fields:
-                values = [self]
-            else:
-                values = [getattr(self, field) for field in fields]
-            try:
-                if each:
-                    # If each is True, then the validator can only accept exactly one
-                    # field, so we call the validator for every item in that field
-                    for value in getattr(self, fields[0]):
-                        callback(self.__class__, value)
+        print("We called validate!", self, all_exceptions)
+
+        for validator_def in self.__validators__:
+            optional = validator_def.optional
+            fields = validator_def.fields
+            each = validator_def.each
+            callback = validator_def.callback
+            options = validator_def.options
+
+            for field in fields:
+                items = []
+                if not field:
+                    items.append(self)
                 else:
-                    callback(self.__class__, *values)
-            except (ValueError, TypeError, SwillValidationError) as exc:
-                exceptions.append((fields, exc))
-                if not all_exceptions:
-                    break
+                    field_item = getattr(self, field)
+                    if each:
+                        items.extend(field_item)
+                    else:
+                        items.append(field_item)
+
+                    if optional and field_item == getattr(self.__class__, field):
+                        continue
+
+                for n, item in enumerate(items):
+                    kwargs = {}
+                    if "field" in options:
+                        kwargs["field"] = field
+                    if "model" in options:
+                        kwargs["model"] = self
+                    if "index" in options and each:
+                        kwargs["index"] = n
+                    try:
+                        callback(self.__class__, item, **kwargs)
+                    except (
+                        ValueError,
+                        TypeError,
+                        ComplexValidationError,
+                        SwillValidationError,
+                    ) as exc:
+                        exceptions.append(
+                            ValidationExceptionItem(field, None if not each else n, exc)
+                        )
+                        if not all_exceptions:
+                            break
 
         if exceptions:
             raise SwillValidationError(exceptions)
 
 
-def validator(*fields: t.List[str], each=False):
+def validator(*fields: str, each=False, optional=True, pre=False):
     """The `validator` decorator marks methods on a Struct that can perform validations
     after decoding and type validation takes place. The decorator specifies which fields
-    it should receive and should return None on success or raise a ValueError
+    it should receive and should return None on success or raise a ValueError.
+
+    If the field is an iterable type (eg: List then each=True can be
+    specified which will then call the validator method *on each item* of the iterable.
+
+    If optional=True (the default) then the validator *will not* be called if the
+    field is optional and the field was not specified.
 
     If no fields are specified then the method will receive the full instance.
 
@@ -227,11 +443,20 @@ def validator(*fields: t.List[str], each=False):
     one.
     """
 
-    if (not fields or len(fields) > 1) and each:
-        raise RuntimeError("Each keyword may only be specified with one field")
-
     def wrapper(f: t.Callable):
-        f.__validator__ = (fields, f, each)
+
+        options = []
+        sig = inspect.signature(f)
+        if "field" in sig.parameters:
+            options.append("field")
+        elif "index" in sig.parameters:
+            options.append("index")
+        elif "model" in sig.parameters:
+            options.append("model")
+
+        f.__validator__ = ValidatorDefinition(
+            fields, f, each, optional, pre, options=options
+        )
         f_cls = f if isinstance(f, classmethod) else classmethod(f)
         return f_cls
 
